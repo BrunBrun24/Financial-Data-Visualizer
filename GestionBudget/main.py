@@ -45,33 +45,27 @@ def Main():
         if dossier is not None:
             SaveDictToJson(results, f"Bilan/Archives/{dossier}/{year}.json")
 
-            CheminFile = f"Bilan/{dossier}/{year}/Bilan {year}.html"
-
             if dossier == "Compte Chèques":
-                chartGen = GraphiqueFinancier(results, CheminFile)
+                chartGen = GraphiqueFinancier(results, f"Bilan/{dossier}/{year}/Bilan {year}.html")
                 chartGen.GraphiqueAutomatique(compteCourant=True)
 
                 # Graphique pour chaques mois
                 allmonth = DiviserParMois(results)
                 for yearMonth, transaction in allmonth.items():
-                    CheminFile = f"Bilan/{dossier}/{year}/{yearMonth}.html"
-
                     chartGen.SetData(transaction)
-                    chartGen.SetOutputFile(CheminFile)
+                    chartGen.SetOutputFile(f"Bilan/{dossier}/{year}/{yearMonth}.html")
                     chartGen.GraphiqueAutomatique(compteCourant=True)
 
-                ExcelReportGenerator(results)
+                ExcelReportGenerator(results, f"Bilan/{dossier}/{year}/Bilan {year}.xlsx")
             else:
-                chartGen = GraphiqueFinancier(results, CheminFile)
+                chartGen = GraphiqueFinancier(results, f"Bilan/{dossier}/{year}/Bilan {year}.html")
                 chartGen.GraphiqueAutomatique(compteCourant=False)
 
                 # Graphique pour chaques mois
                 allmonth = DiviserParMois(data=results)
                 for yearMonth, transaction in allmonth.items():
-                    CheminFile = f"Bilan/{dossier}/{year}/{yearMonth}.html"
-
                     chartGen.SetData(transaction)
-                    chartGen.SetOutputFile(CheminFile)
+                    chartGen.SetOutputFile(f"Bilan/{dossier}/{year}/{yearMonth}.html")
                     chartGen.GraphiqueAutomatique(compteCourant=False)
 
     elif (data is not None) and (extension == "Json"):
