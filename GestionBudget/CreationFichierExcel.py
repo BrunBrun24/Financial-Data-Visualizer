@@ -25,7 +25,7 @@ class ExcelReportGenerator:
     Méthodes:
         - `__init__(self, dataDict)`: Initialise l'instance avec les données fournies et démarre le processus
           de création du fichier Excel.
-        - `AskFile(self)`: Demande à l'utilisateur de choisir l'emplacement de sauvegarde pour le fichier Excel.
+        - `CreateFileExcel(self)`: Créer un fichier Excel.
         - `AddInFileExcel(self)`: Formate les feuilles Excel, applique des styles et ouvre le fichier généré.
         - `SheetBilan(self)`: Crée des bilans de revenus et de dépenses en les regroupant par sous-catégories.
         - `ConvertDates(self)`: Convertit les chaînes de dates au format 'YYYY-MM-DD' en objets `datetime`.
@@ -37,7 +37,7 @@ class ExcelReportGenerator:
           avec un formatage personnalisé.
     """
 
-    def __init__(self, dataDict):
+    def __init__(self, dataDict, outputFile):
         """
         Initialise la classe avec un dictionnaire de données.
 
@@ -47,38 +47,22 @@ class ExcelReportGenerator:
         assert isinstance(dataDict, dict), f"dataDict doit être un dictionnaire, mais c'est {type(dataDict).__name__}."
 
         self.dataDict = dataDict
+        self.outputFile = outputFile
         self.ConvertDates()
-        self.wb = self.AskFile()
+        self.wb = self.CreateFileExcel()
 
         if self.wb is not None:
             self.AddInFileExcel()
 
-    def AskFile(self):
+    def CreateFileExcel(self):
         """
-        Affiche une fenêtre tkinter dans laquelle on demande à l'utilisateur où enregistrer le fichier.
-        
-        Utilise Tkinter pour ouvrir une fenêtre de dialogue permettant à l'utilisateur de choisir un emplacement pour enregistrer un fichier Excel.
-        Si l'utilisateur annule l'opération, la méthode renvoie `None`. Sinon, elle enregistre le fichier avec les données fournies.
+        Créer un fichier Excel
         
         Returns:
             Workbook: Un objet Workbook de openpyxl représentant le fichier Excel.
         """
 
-        # Demander à l'utilisateur où enregistrer le fichier
-        root = tk.Tk()
-        root.withdraw()  # Cache la fenêtre principale de Tkinter
-        
-        self.outputFile = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")],
-            initialdir="Bilan"
-        )
-
-        # L'utilisateur a annulé l'enregistrement
-        if not self.outputFile:
-            root.destroy()
-            return
-        
+        self.CreateDirectories()
         # Créer le fichier Excel
         with pd.ExcelWriter(self.outputFile, engine='openpyxl') as writer:
             # Ajouter les feuilles de chaque catégorie
@@ -90,8 +74,6 @@ class ExcelReportGenerator:
                     df.columns = [str(col) for col in df.columns]
                     # Écrire le DataFrame dans une feuille avec le nom correspondant à la clé
                     df.to_excel(writer, sheet_name=sheetName, index=False)
-
-        root.destroy()
 
         # Charger le fichier Excel pour le formatage ultérieur
         return load_workbook(self.outputFile)
@@ -142,8 +124,6 @@ class ExcelReportGenerator:
 
         # Sauvegarder le fichier Excel avec le format appliqué
         self.wb.save(self.outputFile)
-
-        os.startfile(self.outputFile)  # Ouvre le fichier après l'enregistrement
 
     def SheetBilan(self):
         """
@@ -438,4 +418,15 @@ class ExcelReportGenerator:
             right=Side(style='thin'),
             bottom=Side(style='medium')
         )
+
+    def CreateDirectories(self):
+        """
+        Vérifie l'existence des dossiers et sous-dossiers dans le chemin spécifié et les crée si nécessaire.
+        """
+        # Obtenez le répertoire parent du fichier pour créer les dossiers
+        directory = os.path.dirname(self.outputFile)
+        
+        # Vérifiez si le répertoire existe, sinon créez-le
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
