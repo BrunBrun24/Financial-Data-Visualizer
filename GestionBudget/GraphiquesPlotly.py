@@ -445,30 +445,6 @@ class GraphiqueFinancier():
         """
         Gère la génération des graphiques pour un compte courant avec revenus et dépenses.
         """
-        # Il faut équilibrer l'argent mit dans le Livret A en fonction de l'argent ajouté via  "Virement interne"
-        argent_retirer_LivretA = sum(self.dfRevenus[self.dfRevenus['Type'] == 'Virement interne']["MONTANT"])
-        argent_ajoute_LivretA = sum(self.dfDepenses[self.dfDepenses['Type'] == 'Livret A']["MONTANT"])
-
-        # Si le montant retiré du Livret A par des virements internes est supérieur ou égal au montant ajouté, toutes les transactions liées au Livret A dans les dépenses sont supprimées.
-        # if (argent_ajoute_LivretA - argent_retirer_LivretA) <= 0:
-        #     self.dfDepenses = self.dfDepenses[self.dfDepenses['Type'] != 'Livret A']
-
-        # Si le montant ajouté est supérieur à celui retiré, une seule transaction est conservée dans les dépenses avec un montant ajusté à la différence.
-        # elif (argent_ajoute_LivretA - argent_retirer_LivretA) >= 0:
-        #     difference = argent_ajoute_LivretA - argent_retirer_LivretA
-        #     # Filtrer les lignes correspondant à 'Livret A'
-        #     livret_a_entries = self.dfDepenses[self.dfDepenses['Type'] == 'Livret A']
-        #     # Réinitialiser l'index de livret_a_entries
-        #     livret_a_entries = livret_a_entries.reset_index(drop=True)
-            
-        #     # Retirer toutes les entrées sauf la première
-        #     self.dfDepenses = self.dfDepenses[self.dfDepenses['Type'] != 'Livret A']
-            
-        #     # Ajuster le montant de la première entrée restante
-        #     livret_a_entries.at[0, 'MONTANT'] = difference
-        #     self.dfDepenses = pd.concat([self.dfDepenses, livret_a_entries.iloc[[0]]], ignore_index=True)
-            
-
 
         # Filtrer les lignes où la colonne 'Type' n'est pas 'Virement interne'
         df_filtré = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
