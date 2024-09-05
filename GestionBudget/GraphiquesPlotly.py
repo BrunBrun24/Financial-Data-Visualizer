@@ -8,6 +8,33 @@ import os
 
 
 class GraphiqueFinancier():
+    """
+    La classe `GraphiqueFinancier` est conçue pour générer divers types de graphiques financiers à partir de données de transactions. Elle permet la création de graphiques Sankey, en barres, circulaires, et leur combinaison, en utilisant la bibliothèque Plotly. La classe gère également la sauvegarde des graphiques dans un fichier HTML.
+
+    Attributs:
+        - `data` (dict): Dictionnaire contenant les données de transactions, où chaque clé est le nom de la catégorie et chaque valeur est une liste de transactions représentées par des dictionnaires.
+        - `outputFile` (str): Nom du fichier HTML où les graphiques générés seront sauvegardés.
+        - `filePlotly` (list): Liste des graphiques Plotly générés pour être sauvegardés.
+        - `dfs` (dict): Dictionnaire de DataFrames pandas créés à partir des données de transactions, regroupés par catégorie.
+        - `dfRevenus` (pd.DataFrame): DataFrame des revenus.
+        - `dfDepenses` (pd.DataFrame): DataFrame des dépenses.
+
+    Méthodes:
+        - `__init__(self, data: dict, outputFile: str)`: Initialise le générateur de graphiques avec les données de transactions et le nom du fichier HTML pour sauvegarder les graphiques.
+        - `SetData(self, newData: dict)`: Modifie les données de transactions et met à jour les DataFrames en conséquence.
+        - `SetOutputFile(self, newOutputFile: str)`: Modifie le nom du fichier de sortie pour les graphiques.
+        - `GraphiqueSankey(self, title: str ="", save=True) -> go.Figure`: Crée un graphique Sankey à partir des données de transactions et le sauvegarde dans la liste des graphiques générés si `save` est True.
+        - `GraphiqueBar(self, df: pd.DataFrame, title: str, save=True) -> go.Figure`: Crée un graphique en barres empilées à partir d'un DataFrame et le sauvegarde dans la liste des graphiques générés si `save` est True.
+        - `GraphiqueCirculaire(self, df: pd.DataFrame, name: str, save=True) -> go.Figure`: Crée un graphique circulaire à partir d'un DataFrame et le sauvegarde dans la liste des graphiques générés si `save` est True.
+        - `CombinerGraphiques(self, fig1: go.Figure, fig2: go.Figure, save=True) -> go.Figure`: Combine deux graphiques de type sunburst côte à côte dans une seule figure et le sauvegarde dans la liste des graphiques générés si `save` est True.
+        - `GraphiqueAutomatique(self, compteCourant: bool)`: Gère la génération automatique des graphiques en fonction du type de compte (courant ou non) et des données disponibles.
+        - `LivretA(self)`: Gère la génération des graphiques pour un Livret A.
+        - `CompteCourantRevenusDepenses(self)`: Gère la génération des graphiques pour un compte courant avec revenus et dépenses.
+        - `CompteCourantUniquementDepenses(self)`: Gère la génération des graphiques pour un compte courant avec uniquement des dépenses.
+        - `TitreSankey(self)`: Génère un titre pour le graphique Sankey basé sur les données de revenus et de dépenses.
+        - `SaveInFile(self)`: Enregistre les graphiques générés dans le fichier HTML spécifié.
+        - `CreateDirectories(self)`: Vérifie l'existence des dossiers dans le chemin spécifié et les crée si nécessaire.
+    """
 
     def __init__(self, data: dict, outputFile: str):
         """
