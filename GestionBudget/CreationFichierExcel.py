@@ -1,5 +1,3 @@
-import tkinter as tk
-from tkinter import filedialog
 from datetime import datetime
 import pandas as pd
 from openpyxl import load_workbook
@@ -280,6 +278,9 @@ class ExcelReportGenerator:
         assert isinstance(startRow, int), f"startRow doit être un entier, mais c'est {type(startRow).__name__}."
         assert isinstance(spacing, int), f"spacing doit être un entier, mais c'est {type(spacing).__name__}."
 
+        # On remplace tous les zéros par une chaîne de caractères vides pour améliorer le visuel
+        df.replace(0, '', inplace=True)
+
         if sheetName in self.wb.sheetnames:
             ws = self.wb[sheetName]
             startRow -= 1
@@ -393,12 +394,16 @@ class ExcelReportGenerator:
         
 
 
-        # Appliquer la largeur de la colonne A (environ 200 pixels)
-        column_width = 250 / 7  # Conversion approximative de pixels à largeur de colonne
-        ws.column_dimensions['A'].width = column_width
+        # Appliquer la largeur de la colonne A (environ 250 pixels)
+        ws.column_dimensions['A'].width = 250 / 7
 
-        column_width = 100 / 7
-        ws.column_dimensions['P'].width = column_width
+        ws.column_dimensions['P'].width = 100 / 7
+
+        # Générer une liste de lettres de B à O
+        columns = [chr(i) for i in range(ord('B'), ord('M') + 1)]
+        columns.append('O')
+        for lettre in columns:
+            ws.column_dimensions[lettre].width = 69 / 7
 
         for cell in ws['P']:
             cell.alignment = alignmentCenter
@@ -418,6 +423,27 @@ class ExcelReportGenerator:
             right=Side(style='thin'),
             bottom=Side(style='medium')
         )
+
+
+        # Définir le format monétaire et pourcentage
+        moneyFormat = '#,##0.00 €'
+        percentageFormat = '0.00%'
+
+        # Appliquer le format monétaire
+        for colNum, value in enumerate(df.columns):
+            value = value.strip()  # Enlever les espaces éventuels
+            if value in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total']:
+                for row in ws.iter_rows(min_row=startRow+1, max_row=ws.max_row, min_col=colNum+2, max_col=colNum+2):
+                    for cell in row:
+                        cell.number_format = moneyFormat
+
+        # Appliquer le format pourcentage
+        percentageColName = 'Pourcentage'
+        if percentageColName in df.columns:
+            percentageCol = df.columns.get_loc(percentageColName)
+            for row in ws.iter_rows(min_row=startRow+1, max_row=ws.max_row, min_col=percentageCol+2, max_col=percentageCol+2):
+                for cell in row:
+                    cell.number_format = percentageFormat
 
     def CreateDirectories(self):
         """
