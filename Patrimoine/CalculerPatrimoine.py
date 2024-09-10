@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+from datetime import datetime
 
 
 class Patrimoine:
@@ -21,7 +22,8 @@ class Patrimoine:
         - `GetArgentCompteCourant(self)`: Retourne le montant actuel sur le compte courant.
         - `GetArgentLivretA(self)`: Retourne le montant actuel sur le livret A.
         - `GetPatrimoine(self)`: Retourne le DataFrame contenant les données du patrimoine.
-        - `EvolutionDuPatrimoine(self, nomDuCompte, argent, dossierCompteCourant)`: Calcule l'évolution quotidienne du patrimoine en fonction des transactions JSON et met à jour le DataFrame.
+        - `GetPatrimoine(self)`: Retourne le DataFrame contenant les données de Trade Republic.
+        - `EvolutionDuPatrimoine(self, nomDuCompte, argent, dossierCompte)`: Calcule l'évolution quotidienne du patrimoine en fonction des transactions JSON et met à jour le DataFrame.
         - `SelectionnerDates(self, freq)`: Ajoute des dates à une fréquence spécifiée au DataFrame, garde seulement ces dates, et complète les valeurs manquantes.
         - `CalculPatrimoineDeDepart(argent, directory)`: Calcule le patrimoine initial à partir des transactions trouvées dans les fichiers JSON.
         - `TransformerDossierJsonEnDataFrame(cheminDossier)`: Charge et combine les fichiers JSON d'un dossier en un DataFrame, trié par date d'opération.
@@ -38,6 +40,7 @@ class Patrimoine:
         self.argentCompteCourant = 264.13
         self.argentLivretA = 10045.71
         self.patrimoine = pd.DataFrame()
+        self.tradeRepublic = pd.DataFrame(columns=["Dépôts d'argent", "Argents investis", "Argents vendus", "Dividendes", "Interêts", "Dépenses"])
 
     def GetArgentCompteCourant(self) -> float:
         """Retourne le montant actuel du compte courant."""
@@ -51,14 +54,203 @@ class Patrimoine:
         """Retourne le DataFrame contenant les informations du patrimoine."""
         return self.patrimoine
 
-    def EvolutionDuPatrimoine(self, nomDuCompte: str, argent: float, dossierCompteCourant: str) -> pd.DataFrame:
+    def GetTradeRepublic(self) ->pd.DataFrame:
+        return self.tradeRepublic
+
+
+
+    ################# BOURSE #################
+    def EvolutionTradeRepublic(self):
+        """
+        Charge les données des fichiers JSON et les ajoutent à un DataFrame existant sous le nom de colonne 'Bourse'
+        """
+        directory = "Bilan/Archives/Bourse/"
+        assert os.path.isdir(directory), "Le dossier n'exsiste pas"
+
+        # L'ordre dans le dictionnaire définit la continuité des feuilles dans le fichier Excel
+        operations = [
+            {"nomFichier": directory + "Argents investis.json", "colonneIndexSource": "Date de valeur", "colonneADeplacerSource": "Montant investi", "colonneDestination": "Argents investis"},
+            {"nomFichier": directory + "Argents vendus.json", "colonneIndexSource": "Date de valeur", "colonneADeplacerSource": "Montant gagné", "colonneDestination": "Argents vendus"},
+            {"nomFichier": directory + "Dépôts d'espèces.json", "colonneIndexSource": "Date de valeur", "colonneADeplacerSource": "Prix dépôt net", "colonneDestination": "Dépôts d'argent"},
+            {"nomFichier": directory + "Dividendes.json", "colonneIndexSource": "Date de valeur", "colonneADeplacerSource": "Dividendes net", "colonneDestination": "Dividendes"},
+            {"nomFichier": directory + "Interêts.json", "colonneIndexSource": "Date d'effet", "colonneADeplacerSource": "Interêts net", "colonneDestination": "Interêts"},
+            {"nomFichier": directory + "Retraits.json", "colonneIndexSource": "Date de la commande", "colonneADeplacerSource": "Retraits net", "colonneDestination": "Dépenses"},
+        ]
+
+        for operation in operations:
+            df = self.DownloadDataFrameInJson(operation["nomFichier"])
+            self.AjouterDonneesSiNonExistent(df, operation["colonneIndexSource"], operation["colonneADeplacerSource"], operation["colonneDestination"])
+
+        self.tradeRepublic.sort_index(axis=0, ascending=True, inplace=True)
+
+    def AjouterDonneesSiNonExistent(self, dfSource, colonneIndexSource, colonneADeplacerSource, colonneDestination):
+        """
+        Ajoute les données de la colonne de dfSource dans self.tradeRepublic en index
+        si elles n'existent pas déjà, et assigne les valeurs de prix à la colonne spécifiée.
+
+        Args:
+            dfSource (pd.DataFrame): La DataFrame source contenant les données à ajouter.
+            colonneIndexSource (str): Nom de la colonne dans dfSource contenant les valeurs d'index.
+            colonneADeplacerSource (str): Nom de la colonne dans dfSource contenant les prix.
+            colonneDestination (str): Nom de la colonne dans self.tradeRepublic où les prix seront ajoutés.
+
+        Returns:
+            None
+        """
+        # Vérifications des types des arguments
+        assert isinstance(dfSource, pd.DataFrame), f"dfSource doit être un pd.DataFrame, mais c'est {type(dfSource).__name__}."
+        assert isinstance(colonneIndexSource, str), f"colonneIndexSource doit être une chaîne, mais c'est {type(colonneIndexSource).__name__}."
+        assert isinstance(colonneADeplacerSource, str), f"colonneADeplacerSource doit être une chaîne, mais c'est {type(colonneADeplacerSource).__name__}."
+        assert isinstance(colonneDestination, str), f"colonneDestination doit être une chaîne, mais c'est {type(colonneDestination).__name__}."
+        
+        # Vérifie que les colonnes d'intérêt existent dans dfSource
+        assert colonneIndexSource in dfSource.columns, f"Colonne {colonneIndexSource} inexistante dans dfSource."
+        assert colonneADeplacerSource in dfSource.columns, f"Colonne {colonneADeplacerSource} inexistante dans dfSource."
+        
+        # Vérifie que la colonne de destination existe dans self.tradeRepublic
+        assert colonneDestination in self.tradeRepublic.columns, f"Colonne {colonneDestination} inexistante dans self.tradeRepublic."
+        
+        # Ajoute les données de dfSource à self.tradeRepublic
+        for _, row in dfSource.iterrows():
+            index = row[colonneIndexSource]
+            prix = row[colonneADeplacerSource]
+
+            # Si l'index n'existe pas encore dans self.tradeRepublic, ajoute-le
+            if index not in self.tradeRepublic.index:
+                self.tradeRepublic.loc[index] = [0] * len(self.tradeRepublic.columns)
+            
+            # Ajoute le prix à la valeur existante ou l'initialise si c'est NaN
+            if pd.isna(self.tradeRepublic.at[index, colonneDestination]):
+                self.tradeRepublic.at[index, colonneDestination] = prix
+            else:
+                self.tradeRepublic.at[index, colonneDestination] += prix
+
+    @staticmethod
+    def DownloadDataFrameInJson(path: str) -> pd.DataFrame:
+        """
+        Télécharge les données d'un fichier JSON et retourne un DataFrame.
+
+        Args:
+            path (str): Le chemin vers le fichier JSON.
+
+        Returns:
+            pd.DataFrame: Les données contenues dans le fichier JSON sous forme de DataFrame.
+        """
+        assert isinstance(path, str) and os.path.isfile(path), f"Le fichier {path} n'existe pas ou le chemin n'est pas valide."
+
+        with open(path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        
+        assert isinstance(data, list), "Le contenu du fichier JSON doit être une liste d'objets (dict)."
+        
+        # Conversion des données en DataFrame
+        dataFrame = pd.DataFrame(data)
+        
+        return dataFrame
+
+    
+    def EvolutionDuPatrimoineBourse(self, cheminFichierJson: str) -> pd.DataFrame:
+        """
+        Charge les données d'un fichier JSON et les ajoutent à un DataFrame existant sous le nom de colonne 'Bourse'.
+
+        Args:
+            cheminFichierJson (str): Le chemin du fichier JSON à lire.
+            self.patrimoine (pd.DataFrame): Le DataFrame existant auquel ajouter les nouvelles données. Le DataFrame doit avoir une colonne nommée 'Bourse'.
+
+        Returns:
+            pd.DataFrame: Le DataFrame mis à jour avec les nouvelles données sous la colonne 'Bourse'.
+        """
+        # Vérifications des types des arguments
+        assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
+            f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson).__name__}."
+
+        # Lire le fichier JSON
+        with open(cheminFichierJson, 'r', encoding="utf-8") as f:
+            jsonData = f.read()
+        
+        # Convertir le JSON en dictionnaire
+        dictData = json.loads(jsonData)
+        
+        # Convertir le dictionnaire en DataFrame
+        dataFrameJson = pd.DataFrame(list(dictData.items()), columns=['Date', 'Bourse'])
+        dataFrameJson['Date'] = pd.to_datetime(dataFrameJson['Date'])  # Convertir la colonne 'Date' en type datetime
+        
+        # Assurer que les dates du nouveau DataFrame sont uniques et triées
+        dataFrameJson = dataFrameJson.set_index('Date').sort_index()
+        portefeuilleTradeRepublic = dataFrameJson
+
+        # Récupérer toutes les données concernant Trade Republic
+        tradeRepublicModifie = self.ModificationTradeRepublic()
+
+        # On prend "Bilan False" pour avoir la courbe du patrimoine lisse
+        portefeuilleTradeRepublic["Bourse"] += tradeRepublicModifie["Bilan false"]
+
+        portefeuilleTradeRepublic.sort_index(axis=0, ascending=True, inplace=True)
+        self.patrimoine = self.patrimoine.combine_first(dataFrameJson)
+
+    def ModificationTradeRepublic(self) -> pd.DataFrame:
+        """
+        Modifie le DataFrame de Trade Republic en ajoutant les dates manquantes, puis calcule le bilan avec et sans ajustement 
+        pour lisser les dépôts d'argent. 
+        
+        La méthode crée un nouvel index avec des dates continues, fusionne le DataFrame original avec cet index, remplit les 
+        valeurs manquantes avec zéro, puis calcule deux colonnes de bilan : une avec les dépôts ajustés (décalés de deux jours)
+        et une sans ajustement. 
+        
+        Returns:
+            pd.DataFrame: Un DataFrame contenant deux colonnes de bilan ('Bilan true' et 'Bilan false').
+        """
+        # Assertions pour vérifier les types des objets et leur validité
+        assert hasattr(self, 'tradeRepublic'), "L'objet self doit contenir l'attribut 'tradeRepublic'."
+        assert isinstance(self.tradeRepublic, pd.DataFrame), f"self.tradeRepublic doit être un DataFrame: ({type(self.tradeRepublic).__name__})"
+        # S'assurer que les colonnes nécessaires existent dans le DataFrame
+        required_columns = ["Dépôts d'argent", "Argents investis", "Argents vendus", "Dividendes", "Interêts", "Dépenses"]
+        for column in required_columns:
+            assert column in self.tradeRepublic.columns, f"La colonne '{column}' doit être présente dans le DataFrame tradeRepublic."
+
+        # Créer le DataFrame self.tradeRepublic
+        self.EvolutionTradeRepublic()
+        # Copier le DataFrame pour éviter de modifier l'original
+        tradeRepublicModifie = self.tradeRepublic.copy()
+
+        # Assurez-vous que l'index est en datetime
+        if not pd.api.types.is_datetime64_any_dtype(tradeRepublicModifie.index):
+            tradeRepublicModifie.index = pd.to_datetime(tradeRepublicModifie.index)
+
+        minDate = tradeRepublicModifie.index.min()
+        maxDate = datetime.today()
+        dateRange = pd.date_range(start=minDate, end=maxDate, freq='D')
+        newIndex = pd.DataFrame(index=dateRange)
+        # Fusionner le DataFrame avec les dates manquantes avec l'ancien DataFrame
+        tradeRepublicModifie = newIndex.join(tradeRepublicModifie, how='left')
+        
+        nouvelleDataFrame = pd.DataFrame(index=tradeRepublicModifie.index)
+        tradeRepublicModifie.fillna(0, inplace=True)
+        # Calculer le bilan en utilisant les colonnes des transactions financières
+        nouvelleDataFrame['Bilan true'] = tradeRepublicModifie["Dépôts d'argent"].cumsum() + tradeRepublicModifie['Argents investis'].cumsum() + tradeRepublicModifie['Argents vendus'].cumsum() + tradeRepublicModifie['Dividendes'].cumsum() + tradeRepublicModifie['Interêts'].cumsum() - tradeRepublicModifie['Dépenses'].cumsum()
+
+        
+        ################ On décale les montants des dépôts pour que le niveau du patrimoine soit lisse au lieu d'avoir des pics ################
+        nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse = pd.DataFrame()
+        nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse['Dépôts d\'argent'] = tradeRepublicModifie['Dépôts d\'argent']
+        # Ajouter 2 jours à chaque date dans l'index
+        nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse.index = nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse.index + pd.DateOffset(days=2)
+        tradeRepublicModifie["Dépôts d'argent"] = nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse['Dépôts d\'argent']
+        tradeRepublicModifie.fillna(0, inplace=True)
+        # Calculer le bilan en utilisant les colonnes des transactions financières
+        nouvelleDataFrame['Bilan false'] = tradeRepublicModifie["Dépôts d'argent"].cumsum() + tradeRepublicModifie['Argents investis'].cumsum() + tradeRepublicModifie['Argents vendus'].cumsum() + tradeRepublicModifie['Dividendes'].cumsum() + tradeRepublicModifie['Interêts'].cumsum() - tradeRepublicModifie['Dépenses'].cumsum()
+        
+        return nouvelleDataFrame
+
+    # Livret, Compte, ...
+    def EvolutionDuPatrimoine(self, nomDuCompte: str, argent: float, dossierCompte: str) -> pd.DataFrame:
         """
         Calcule l'évolution du patrimoine quotidiennement basé sur les transactions trouvées dans les fichiers JSON.
 
         Args:
             nomDuCompte (str): Nom du compte à mettre à jour.
             argent (float): Montant initial d'argent sur le compte.
-            dossierCompteCourant (str): Chemin vers le dossier contenant les fichiers JSON avec les transactions.
+            dossierCompte (str): Chemin vers le dossier contenant les fichiers JSON avec les transactions.
 
         Returns:
             pd.DataFrame: Le DataFrame mis à jour avec l'évolution du patrimoine.
@@ -66,13 +258,13 @@ class Patrimoine:
         assert isinstance(self.patrimoine, pd.DataFrame), f"La variable patrimoine doit être un DataFrame: ({type(self.patrimoine).__name__})"
         assert isinstance(nomDuCompte, str), f"La variable nomDuCompte doit être une chaîne de caractères: ({type(nomDuCompte).__name__})"
         assert isinstance(argent, (int, float)), f"La variable argent doit être un nombre: ({type(argent).__name__})"
-        assert isinstance(dossierCompteCourant, str), f"La variable dossierCompteCourant doit être une chaîne de caractères: ({type(dossierCompteCourant).__name__})"
-        assert os.path.exists(dossierCompteCourant), f"Le dossier spécifié n'existe pas: {dossierCompteCourant}"
+        assert isinstance(dossierCompte, str), f"La variable dossierCompte doit être une chaîne de caractères: ({type(dossierCompte).__name__})"
+        assert os.path.exists(dossierCompte), f"Le dossier spécifié n'existe pas: {dossierCompte}"
 
         if nomDuCompte not in self.patrimoine.columns:
             self.patrimoine[nomDuCompte] = pd.Series(dtype=float)
 
-        transactions = self.TransformerDossierJsonEnDataFrame(dossierCompteCourant)
+        transactions = self.TransformerDossierJsonEnDataFrame(dossierCompte)
 
         assert pd.api.types.is_datetime64_any_dtype(transactions.index), "L'index doit être de type datetime."
         assert "MONTANT" in transactions, "La colonne 'MONTANT' est manquante dans les transactions."
@@ -81,7 +273,10 @@ class Patrimoine:
             argent += row["MONTANT"]
             self.patrimoine.loc[date, nomDuCompte] = argent
 
-    def SelectionnerDates(self, df: pd.DataFrame, freq: str) -> pd.DataFrame:
+
+
+    @staticmethod
+    def SelectionnerDates(df: pd.DataFrame, freq: str) -> pd.DataFrame:
         """
         Ajoute des dates à une fréquence spécifiée dans le DataFrame, garde seulement ces dates, et complète les valeurs manquantes par la date la plus proche.
 
@@ -219,6 +414,7 @@ class Patrimoine:
         # df_long = df_long[['Date', 'Type', 'Montant']]
         return df
     
+
     def AfficherGraphiqueHistogrammeSuperpose(self, freq: str) -> None:
         """
         Affiche un histogramme superposé des montants pour toutes les colonnes du DataFrame à une fréquence donnée, 
@@ -238,6 +434,16 @@ class Patrimoine:
         assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q', mais c'est '{freq}'."
         
         df = self.patrimoine.copy()
+        
+        if "Bourse" in df.columns:
+            # Récupérer la première date de la colonne Bourse
+            if freq in ["M", "Q"]:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
+            elif freq == "Y":
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
+            else:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
+
         df = self.ReorganiserColonnesParValeurDerniereLigne(df)
 
         df = self.TransformerDataframe(df, freq)
@@ -247,6 +453,11 @@ class Patrimoine:
         # Sélectionner toutes les colonnes sauf 'Date' pour l'histogramme
         colonnes = [col for col in df.columns if col != 'Date']
         assert len(colonnes) > 0, "Aucune colonne à afficher hormis la colonne 'Date'."
+        
+        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
+        if "Bourse" in df.columns:
+            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
+            df.loc[df['Date'] < firstDateBourse, 'Bourse'] = 0
 
         # Filtrer les lignes où les colonnes sélectionnées n'ont pas de NaN
         dfiltered = df.dropna(subset=colonnes)
@@ -283,7 +494,21 @@ class Patrimoine:
         assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q', mais c'est '{freq}'."
         
         df = self.patrimoine.copy()
+        if "Bourse" in df.columns:
+            # Récupérer la première date de la colonne Bourse
+            if freq in ["M", "Q"]:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
+            elif freq == "Y":
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
+            else:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
+
         df = self.SelectionnerDates(df, freq)
+        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
+        if "Bourse" in df.columns:
+            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
+            df.loc[df.index < firstDateBourse, 'Bourse'] = 0
+
         df = df.dropna()
 
         colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 
@@ -322,14 +547,29 @@ class Patrimoine:
         assert not self.patrimoine.empty, f"La variable patrimoine doit contenir des colonnes."
 
         df = self.patrimoine.copy()
+
+        if "Bourse" in df.columns:
+            # Récupérer la première date de la colonne Bourse
+            if freq in ["M", "Q"]:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
+            elif freq == "Y":
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
+            else:
+                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
         
-        # Remplir les valeurs manquantes
-        df = df.fillna(method="ffill").fillna(method="bfill")
+        # Remplir les valeurs manquantes pour toutes les colonnes sauf 'Bourse'
+        colsSaufBourse = df.columns.difference(['Bourse'])
+        df[colsSaufBourse] = df[colsSaufBourse].fillna(method="ffill").fillna(method="bfill")
+        
+        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
+        if "Bourse" in df.columns:
+            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
+            df.loc[df.index < firstDateBourse, 'Bourse'] = 0
+        
         df.sort_index(inplace=True)
         df["Patrimoine"] = df.sum(axis=1)
         df = self.ReorganiserColonnesParValeurDerniereLigne(df)
         dfPourCalulerLePourcentage = df.copy()
-
         df = self.SelectionnerDates(df, freq)
 
         colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
@@ -406,6 +646,8 @@ class Patrimoine:
 
         fig.show()
 
+
+
     @staticmethod
     def DetermineColor(value) -> tuple:
         """
@@ -445,7 +687,7 @@ class Patrimoine:
         assert livret in df.columns, f"La colonne '{livret}' n'existe pas dans le DataFrame."
 
         # Pas d'annotations pour "Compte Courant"
-        if livret == "Compte Courant":
+        if livret in ["Compte Courant", "Bourse"]:
             return []
 
         pourcentages = self.CalculEvolutionMoyenneParMois(df[livret])
