@@ -695,7 +695,7 @@ class Patrimoine:
         """
         Génère des annotations pour un graphique Plotly basées sur les pourcentages de variation moyenne mensuelle et annuelle
         pour une colonne spécifique d'un DataFrame. Les annotations indiquent les évolutions en pourcentage avec des couleurs 
-        différentes selon la tendance (positive ou négative).
+        différentes selon la tendance (positive ou négative) et s'adaptent dynamiquement à la taille du texte.
 
         Args:
             df (pd.DataFrame): DataFrame contenant les données de patrimoine pour calculer les pourcentages d'évolution.
@@ -709,29 +709,44 @@ class Patrimoine:
         assert isinstance(livret, str), "Le paramètre livret doit être une chaîne de caractères."
         assert livret in df.columns, f"La colonne '{livret}' n'existe pas dans le DataFrame."
 
-        # Pas d'annotations pour "Compte Courant"
+        # Pas d'annotations pour "Compte Courant" ou "Bourse"
         if livret in ["Compte Courant", "Bourse"]:
             return []
 
+        # Calculer les pourcentages d'évolution moyenne
         pourcentages = self.CalculEvolutionMoyenneParMois(df[livret])
         annotations = []
-        x = 0.4755
+        x = 0.472  # Position initiale des annotations sur l'axe x
+
+        # Parcourir les lettres (W, M, Y) et leurs pourcentages respectifs
         for lettre, pourcentage in pourcentages.items():
+            # Déterminer la couleur en fonction de la tendance (positive ou négative)
             color, rgba = self.DetermineColor(pourcentage)
+
+            # Ajuster la taille de la police et les marges en fonction de la longueur du texte
+            texte = f"{lettre}: {pourcentage:.2f}%"
+            tailleTexte = max(13, 12 - len(texte) // 5)  # Ajustement de la taille de police selon la longueur
             annotations.append(
                 dict(
                     xref='paper', yref='paper',
                     x=x, y=-0.15,
-                    text=f"{lettre}: {pourcentage:.2f}%",
+                    text=texte,
                     showarrow=False,
-                    font=dict(size=12),
+                    font=dict(size=tailleTexte),  # Taille de police dynamique
                     bordercolor=color,
                     borderwidth=2,
                     bgcolor=rgba,
-                    opacity=1
+                    opacity=1,
+                    # Marges supplémentaires pour améliorer l'apparence
+                    ax=0,
+                    ay=0,
+                    xanchor="center",  # Centrer le texte
+                    yanchor="middle",  # Centrer verticalement
+                    align="center",    # Aligner le texte au centre
                 )
             )
-            x += 0.05
+            x += 0.06  # Espace ajusté dynamiquement entre les annotations
+
         return annotations
 
     def CalculEvolutionMoyenneParMois(self, patrimoine) -> dict:
