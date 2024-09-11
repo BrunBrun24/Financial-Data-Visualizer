@@ -530,7 +530,7 @@ class Patrimoine:
                 tickfont_size=14,
             ),
             barmode='group',
-            bargap=0.15,  # Espace entre les groupes de barres
+            bargap=-0,  # Espace entre les groupes de barres
             bargroupgap=0.1  # Espace entre les barres du même groupe
         )
 
@@ -591,8 +591,8 @@ class Patrimoine:
             ))
 
             # Définir la ligne de base pour le remplissage
-            min_value = df[livret].min()
-            baseline = min_value - 250
+            minValue = df[livret].min()
+            baseline = minValue - 250
             if baseline < 0:
                 baseline = 0
             
@@ -622,6 +622,15 @@ class Patrimoine:
                     'annotations': self.ObtenirAnnotations(dfPourCalulerLePourcentage, livret)}]
             ))
 
+        # Ajout des boutons de plage de date
+        dateButtons = [
+            dict(count=1, label="1M", step="month", stepmode="backward"),
+            dict(count=3, label="3M", step="month", stepmode="backward"),
+            dict(count=1, label="1Y", step="year", stepmode="backward"),
+            dict(count=5, label="5Y", step="year", stepmode="backward"),
+            dict(count=10, label="10Y", step="year", stepmode="backward"),
+            dict(step="all", label="Max")
+        ]
 
         # Mise en forme du graphique
         fig.update_layout(
@@ -633,15 +642,29 @@ class Patrimoine:
                     showactive=True,
                 )
             ],
-            xaxis_title='Date',
-            yaxis_title='Montant (€)',
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=dateButtons,
+                    x=0,  # Positionnement des boutons à gauche
+                    xanchor='left',
+                    y=1,  # Sous le titre
+                    yanchor='bottom'
+                ),
+                title='Date',
+                type='date'
+            ),
+            yaxis=dict(
+                title='Prix',
+                automargin=True,  # Ajoute une marge automatique si nécessaire
+                autorange=True,   # Permet l'adaptation dynamique de l'axe Y selon la sélection de date
+                tickprefix="€",
+            ),
             template='plotly_white',
             height=900,
             title=f'Evolution du {df.columns[0]}',
-            
             barmode='group',
             annotations=self.ObtenirAnnotations(dfPourCalulerLePourcentage, df.columns[0]),
-            margin=dict(b=150)  # Augmente l'espace en bas pour les annotations
+            margin=dict(b=150)
         )
 
         fig.show()
