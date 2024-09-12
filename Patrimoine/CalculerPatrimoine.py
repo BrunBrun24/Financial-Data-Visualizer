@@ -669,7 +669,88 @@ class Patrimoine:
 
         fig.show()
 
+    def AfficheGraphiqueAeraPlot(self, freq="D") -> None:
+        """
+        Affiche un graphique empilé montrant l'évolution du patrimoine sous forme d'aires empilées.
+        Chaque compte est empilé en dessous, en commençant par le compte avec le plus d'argent et en descendant.
+        Les couleurs sont fixes et associées correctement à chaque livret, sans afficher la courbe du patrimoine total.
 
+        Args:
+            freq (str): Fréquence de sélection des données (ex: 'D', 'M', 'Y'). Par défaut, 'D' pour quotidien.
+        """
+        assert isinstance(self.patrimoine, pd.DataFrame), f"La variable patrimoine doit être une DataFrame: ({type(self.patrimoine).__name__})"
+        assert not self.patrimoine.empty, f"La variable patrimoine doit contenir des colonnes."
+
+        df = self.patrimoine.copy()
+
+        # Remplir les valeurs manquantes pour les autres colonnes
+        df.fillna(method="ffill", inplace=True)
+        df.fillna(method="bfill", inplace=True)
+
+        # Trier les colonnes par valeur finale (ordre décroissant pour l'empilement correct)
+        colonnesTriees = df.iloc[-1].sort_values(ascending=False).index.tolist()
+        df = df[colonnesTriees]
+
+        # Sélectionner les données selon la fréquence demandée (quotidienne, mensuelle, annuelle...)
+        df = self.SelectionnerDates(df, freq)
+
+        df = self.SupprimerValeursRepeteesSpecifiques(df)
+
+        # Définir les couleurs pour chaque colonne avec une transparence ajustée
+        colors = [
+            'rgba(99, 110, 250, 0.4)',  # Bleu clair
+            'rgba(239, 85, 59, 0.4)',   # Rouge clair
+            'rgba(0, 204, 150, 0.4)',   # Vert clair
+            'rgba(171, 99, 250, 0.4)',  # Violet clair
+            'rgba(255, 161, 90, 0.4)',  # Orange clair
+            'rgba(25, 211, 243, 0.4)'   # Cyan clair
+        ]
+
+        # Tracer le graphique en aires empilées avec Plotly Express
+        fig = px.area(
+            df,
+            x=df.index,
+            y=df.columns,
+            title="Evolution du patrimoine empilé sans total",
+            labels={"value": "Prix (€)", "variable": "Livret", "Date": "Date"},
+            template="plotly_white",
+            color_discrete_sequence=colors  # Appliquer les couleurs définies
+        )
+
+        # Mettre à jour la mise en page
+        fig.update_layout(
+            yaxis=dict(title='Prix (€)', tickprefix="€"),
+            height=900,
+            margin=dict(b=150)
+        )
+        
+        fig.show()
+
+
+
+    @staticmethod
+    def SupprimerValeursRepeteesSpecifiques(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Supprime les valeurs répétées au début de certaines colonnes d'un DataFrame.
+        - Pour 'Bourse', remplace toutes les valeurs répétées au début par NaN.
+
+        Args:
+            df (pd.DataFrame): Le DataFrame à traiter.
+
+        Returns:
+            pd.DataFrame: Le DataFrame modifié avec les premières valeurs répétées remplacées par NaN.
+        """
+        df_modifie = df.copy()
+
+        # Traiter la colonne 'Bourse'
+        col_bourse = 'Bourse'
+        if col_bourse in df_modifie.columns:
+            # Trouver les valeurs répétées au début
+            df_bourse = df_modifie[col_bourse]
+            first_diff = df_bourse.ne(df_bourse.shift()).cumsum()
+            df_modifie[col_bourse] = df_bourse.where(first_diff != 1, 0)
+
+        return df_modifie
 
     @staticmethod
     def DetermineColor(value) -> tuple:
