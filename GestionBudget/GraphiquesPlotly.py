@@ -31,6 +31,7 @@ class GraphiqueFinancier():
         - `LivretA(self)`: Gère la génération des graphiques pour un Livret A.
         - `CompteCourantRevenusDepenses(self)`: Gère la génération des graphiques pour un compte courant avec revenus et dépenses.
         - `CompteCourantUniquementDepenses(self)`: Gère la génération des graphiques pour un compte courant avec uniquement des dépenses.
+        - `CompteCourantUniquementRevenus(self)`: Gère la génération des graphiques pour un compte courant avec uniquement des revenus.
         - `TitreSankey(self)`: Génère un titre pour le graphique Sankey basé sur les données de revenus et de dépenses.
         - `SaveInFile(self)`: Enregistre les graphiques générés dans le fichier HTML spécifié.
         - `CreateDirectories(self)`: Vérifie l'existence des dossiers dans le chemin spécifié et les crée si nécessaire.
@@ -86,7 +87,13 @@ class GraphiqueFinancier():
 
     def SetData(self, newData):
         """
-        Modifie data
+        Modifie l'attribut 'data' avec les nouvelles données fournies et prépare les DataFrames pour les revenus 
+        et les dépenses.
+
+        Args:
+            newData (dict): Un dictionnaire contenant des données où chaque clé est une chaîne de caractères 
+                            et chaque valeur est une liste de dictionnaires. Chaque dictionnaire dans la liste 
+                            doit contenir au moins la clé 'MONTANT'.
         """
         assert isinstance(newData, dict) and all(isinstance(key, str) and isinstance(value, list) for key, value in newData.items()), \
             "Les données doivent être un dictionnaire avec des clés en chaînes de caractères et des valeurs en list."
@@ -337,49 +344,84 @@ class GraphiqueFinancier():
         """
         Gère la génération des graphiques pour un compte courant avec revenus et dépenses.
         """
+        self.GraphiqueSankey(self.TitreSankey())
 
-        # Filtrer les lignes où la colonne 'Type' n'est pas 'Virement interne'
-        df_filtré = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
-        fig_soleil_revenus = self.GraphiqueCirculaire(df=df_filtré, name="Revenus gagné", save=False)
-        fig_soleil_allRevenus = self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus gagné + Virement interne", save=False)
         
         # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement'
-        df_filtré = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
-        fig_soleil_depenses = self.GraphiqueCirculaire(df=df_filtré, name="Dépenses", save=False)
-        fig_soleil = self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses + Investissement", save=False)
+        dfFiltre = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
+        # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
+        if (self.dfDepenses.equals(dfFiltre)) or (dfFiltre.empty):
+            self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses")
+        else:
+            # Si les DataFrames ne sont pas identiques, créer deux graphiques
+            figSoleilDepenses = self.GraphiqueCirculaire(df=dfFiltre, name="Dépenses", save=False)
+            figSoleil = self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses + Investissement", save=False)
+        
+            # Création des graphiques dans l'ordre dans le fichier
+            self.CombinerGraphiques(figSoleilDepenses, figSoleil)
+        
 
+        # Filtrer les lignes où la colonne 'Type' n'est pas 'Virement interne'
+        dfFiltre = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
+        # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
+        if dfFiltre.equals(self.dfRevenus):
+            # Si les deux DataFrames sont identiques, créer un seul graphique
+            self.GraphiqueCirculaire(df=dfFiltre, name="Revenus gagné")
+        else:
+            # Si les DataFrames ne sont pas identiques, créer deux graphiques
+            figSoleilRevenus = self.GraphiqueCirculaire(df=dfFiltre, name="Revenus gagné", save=False)
+            figSoleilAllRevenus = self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus gagné + Virement interne", save=False)
+            
+            # Création des graphiques combinés dans l'ordre
+            self.CombinerGraphiques(figSoleilRevenus, figSoleilAllRevenus)
 
-        # Création des graphiques dans l'ordre dans le fichier
-        self.GraphiqueSankey(self.TitreSankey())
-        self.CombinerGraphiques(fig_soleil_depenses, fig_soleil)
-        self.CombinerGraphiques(fig_soleil_revenus, fig_soleil_allRevenus)
 
         self.SaveInFile()
 
     def CompteCourantUniquementDepenses(self):
         """
         Gère la génération des graphiques pour un compte courant avec uniquement des dépenses.
+        Crée un graphique circulaire pour les dépenses avec et sans la catégorie Investissement,
+        mais évite de dupliquer les graphiques si la catégorie Investissement n'est pas présents.
         """
         # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement'
-        df_filtré = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
-        self.GraphiqueCirculaire(df=df_filtré, name="Dépenses")
-        self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses + Investissement")
+        dfFiltre = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
+        
+        # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
+        if (self.dfDepenses.equals(dfFiltre)) or (dfFiltre.empty):
+            self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses")
+        else:
+            # Si les DataFrames ne sont pas identiques, créer deux graphiques
+            figSoleilDepenses = self.GraphiqueCirculaire(df=dfFiltre, name="Dépenses", save=False)
+            figSoleil = self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses + Investissement", save=False)
+        
+            # Création des graphiques dans l'ordre dans le fichier
+            self.CombinerGraphiques(figSoleilDepenses, figSoleil)
 
         self.SaveInFile()
 
     def CompteCourantUniquementRevenus(self):
         """
         Gère la génération des graphiques pour un compte courant avec uniquement des revenus.
+        Crée un graphique circulaire pour les revenus gagnés avec et sans virements internes,
+        mais évite de dupliquer les graphiques si les virements internes ne sont pas présents.
         """
-
         # Filtrer les lignes où la colonne 'Type' n'est pas 'Virement interne'
-        df_filtré = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
-        fig_soleil_revenus = self.GraphiqueCirculaire(df=df_filtré, name="Revenus gagné", save=False)
-        fig_soleil_allRevenus = self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus gagné + Virement interne", save=False)
-
-        # Création des graphiques dans l'ordre dans le fichier
-        self.CombinerGraphiques(fig_soleil_revenus, fig_soleil_allRevenus)
-
+        dfFiltre = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
+        
+        # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
+        if dfFiltre.equals(self.dfRevenus):
+            # Si les deux DataFrames sont identiques, créer un seul graphique
+            self.GraphiqueCirculaire(df=dfFiltre, name="Revenus gagné")
+        else:
+            # Si les DataFrames ne sont pas identiques, créer deux graphiques
+            figSoleilRevenus = self.GraphiqueCirculaire(df=dfFiltre, name="Revenus gagné", save=False)
+            figSoleilAllRevenus = self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus gagné + Virement interne", save=False)
+            
+            # Création des graphiques combinés dans l'ordre
+            self.CombinerGraphiques(figSoleilRevenus, figSoleilAllRevenus)
+        
+        # Enregistrer les graphiques dans un fichier
         self.SaveInFile()
 
     def TitreSankey(self):
