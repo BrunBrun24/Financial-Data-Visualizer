@@ -292,6 +292,52 @@ class GraphiqueFinancier():
             self.filePlotly.append(figCombined)
         return figCombined
 
+    def GraphiqueHistogrammeSuperpose(self):
+        """
+        Génère un graphique en histogramme empilé pour visualiser les dépenses par mois.
+        Les catégories avec les dépenses les plus élevées sont placées en bas du graphique pour chaque mois.
+        """
+
+        # Préparer les données
+        dfDepenses = self.dfDepenses.copy()
+
+        dfDepenses['DATE D\'OPÉRATION'] = pd.to_datetime(dfDepenses['DATE D\'OPÉRATION'])
+        dfDepenses['Mois'] = dfDepenses['DATE D\'OPÉRATION'].dt.to_period('M').astype(str)
+
+        # Vérifier les mois uniques
+        moisUniques = dfDepenses['Mois'].unique()
+
+        # Si il y a plusieurs mois alors on enregistre le graphique
+        if len(moisUniques) > 1:
+            # Agréger les dépenses par mois et par catégorie
+            dfAggrege = dfDepenses.groupby(['Mois', 'category'])['MONTANT'].sum().reset_index()
+
+            # Créer une table pivot avec les catégories triées par mois
+            dfPivot = dfAggrege.pivot_table(index='Mois', columns='category', values='MONTANT', fill_value=0)
+            
+            # Trier les colonnes pour chaque mois
+            dfSorted = pd.DataFrame(index=dfPivot.index)
+            for mois in dfPivot.index:
+                sorted_categories = dfPivot.loc[mois].sort_values(ascending=False).index
+                dfSorted.loc[mois, sorted_categories] = dfPivot.loc[mois, sorted_categories]
+
+            # Transposer le DataFrame pour Plotly
+            dfSorted = dfSorted.reset_index().melt(id_vars='Mois', var_name='Catégorie', value_name='Montant')
+
+            # Créer le graphique en histogramme empilé
+            fig = px.bar(
+                dfSorted,
+                x='Mois',
+                y='Montant',
+                color='Catégorie',
+                title="Dépenses par Catégorie par Mois",
+                labels={"Montant": "Montant", "Catégorie": "Catégorie"}
+            )
+
+            fig.update_layout(barmode='stack')
+            
+            self.filePlotly.append(fig)
+        
 
     def GraphiqueAutomatique(self, compteCourant):
         """
@@ -345,6 +391,7 @@ class GraphiqueFinancier():
         Gère la génération des graphiques pour un compte courant avec revenus et dépenses.
         """
         self.GraphiqueSankey(self.TitreSankey())
+        self.GraphiqueHistogrammeSuperpose()
 
         
         # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement'
@@ -384,6 +431,9 @@ class GraphiqueFinancier():
         Crée un graphique circulaire pour les dépenses avec et sans la catégorie Investissement,
         mais évite de dupliquer les graphiques si la catégorie Investissement n'est pas présents.
         """
+
+        self.GraphiqueHistogrammeSuperpose()
+
         # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement'
         dfFiltre = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
         
