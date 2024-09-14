@@ -126,7 +126,7 @@ class SankeyGenerator:
                 transactionsWithTotals = [{'Type': transaction['Type'], 'MONTANT': transaction['MONTANT']} for transaction in transactionsList]
                 totals = self.CalculateTotals(transactionsList)
                 categoryTotal = round(sum(totals.values()), 2)
-                reformattedData[f'{category}: {categoryTotal:.2f}'] = transactionsWithTotals
+                reformattedData[f'{category}: {categoryTotal:.2f} €'] = transactionsWithTotals
             else:
                 reformattedData[category] = []
 
@@ -143,7 +143,7 @@ class SankeyGenerator:
                 for transaction in transactions:
                     targetName = transaction['Type']
                     argent = sum(trans['MONTANT'] for trans in transactions if trans['Type'] == targetName)
-                    targetName += f": {abs(round(argent, 2))}"
+                    targetName += f": {abs(round(argent, 2))} €"
                     sourceIdx = self.GetLabelIndex(targetName)
                     targetIdx = self.GetLabelIndex(cle)
                     self.sources.append(sourceIdx)
@@ -166,7 +166,7 @@ class SankeyGenerator:
                     for ele in transaction:
                         targetName = ele['Type']
                         argent = sum(trans['MONTANT'] for trans in transaction if trans['Type'] == targetName)
-                        targetName += f": {abs(round(argent, 2))}"
+                        targetName += f": {abs(round(argent, 2))} €"
                         sourceIdx = self.GetLabelIndex(sousCategory)
                         targetIdx = self.GetLabelIndex(targetName)
                         self.sources.append(sourceIdx)

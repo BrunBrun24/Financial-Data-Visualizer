@@ -330,11 +330,17 @@ class GraphiqueFinancier():
                 x='Mois',
                 y='Montant',
                 color='Catégorie',
-                title="Dépenses par Catégorie par Mois",
                 labels={"Montant": "Montant", "Catégorie": "Catégorie"}
             )
 
-            fig.update_layout(barmode='stack')
+            fig.update_layout(
+                barmode='stack',
+                xaxis_title=None,
+                yaxis_title=None,
+                yaxis=dict(
+                    tickprefix="€"
+                )
+            )
             
             self.filePlotly.append(fig)
         
