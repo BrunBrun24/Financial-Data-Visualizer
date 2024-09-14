@@ -68,6 +68,9 @@ class OperationCategoriser:
         assert isinstance(cheminFileJson, str) and cheminFileJson.endswith(".json"), "Le chemin du fichier JSON doit être une chaîne de caractères se terminant par '.json'."
         assert isinstance(buttonsPerRow, int) and buttonsPerRow > 0, "buttonsPerRow doit être un entier positif."
 
+        data['LIBELLÉ COURT'] = data['LIBELLÉ COURT'].fillna('Interet')
+        data['TYPE OPÉRATION'] = data['TYPE OPÉRATION'].fillna('Interet')
+
         
         self.categories = data["LIBELLÉ COURT"].unique()
         self.buttonLabels = buttonLabels
@@ -105,10 +108,10 @@ class OperationCategoriser:
         tableaux = {}
 
         # Obtenir les valeurs uniques de 'LIBELLÉ COURT'
-        valeurs_unique = donnees["LIBELLÉ COURT"].unique()
+        valeursUnique = donnees["LIBELLÉ COURT"].unique()
 
         # Remplir les tableaux en fonction de la colonne "LIBELLÉ COURT"
-        for valeur in valeurs_unique:
+        for valeur in valeursUnique:
             tableaux[valeur] = donnees[donnees["LIBELLÉ COURT"] == valeur]
         
         return tableaux
@@ -611,10 +614,6 @@ class OperationCategoriser:
             if self.index >= len(current_list):
                 self.index = 0
                 self.categoryIndex += 1
-                
-                # Assure que categoryIndex reste dans les limites
-                if self.categoryIndex >= len(self.categories):
-                    self.categoryIndex = len(self.categories) - 1
 
         # Met à jour l'affichage avec la nouvelle entrée
         self.UpdateDisplay()
@@ -648,7 +647,7 @@ class OperationCategoriser:
         libelleOperation = currentItem["LIBELLÉ OPÉRATION"]
 
         # Liste des restaurants spécifiques pour la catégorisation
-        restaurant = ["BURGER KING", "KFC ANGERS", "MC DO", "O TACOS", "OTACOS"]
+        restaurant = ["BURGER KING", "KFC", "MC DO", "O TACOS", "OTACOS"]
 
         # On regarde s'il n'y a pas d'indices pour classer automatiquement les transactions dans leur catégories
 
@@ -663,6 +662,9 @@ class OperationCategoriser:
             self.PutInCategorie(currentItem, currentList, "Revenus", "Virement interne")
             return False
         elif libelleCourt == "VIREMENT PERMANENT":
+            self.PutInCategorie(currentItem, currentList, "Revenus", "Virement reçu")
+            return False
+        elif libelleOperation == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL":
             self.PutInCategorie(currentItem, currentList, "Revenus", "Virement reçu")
             return False
 
@@ -690,7 +692,7 @@ class OperationCategoriser:
             return False
 
         # Pour la catégorie "Vie quotidienne"
-        elif libelleOperation == "IZLY SMONEY PARIS":
+        elif libelleOperation == "IZLY SMONEY":
             self.PutInCategorie(currentItem, currentList, "Vie quotidienne", "Alimentation - Supermarché")
             return False
         
