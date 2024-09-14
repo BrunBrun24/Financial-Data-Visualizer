@@ -374,13 +374,15 @@ class GraphiqueFinancier():
         if self.dfDepenses.empty and not self.dfRevenus.empty:
             self.GraphiqueSankey()
             self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus du Livret A")
-        # Si on a des des dépenses mais pas de revenus
+        # Si on a des dépenses mais pas de revenus
         elif not self.dfDepenses.empty and self.dfRevenus.empty:
             self.GraphiqueSankey()
+            self.GraphiqueHistogrammeSuperpose()
             self.GraphiqueCirculaire(df=self.dfDepenses, name="Virement")
-        # Si on a des des dépenses et des revenus
+        # Si on a des dépenses et des revenus
         elif not self.dfDepenses.empty and not self.dfRevenus.empty:
             self.GraphiqueSankey()
+            self.GraphiqueHistogrammeSuperpose()
             self.GraphiqueCirculaire(df=self.dfDepenses, name="Virement")
             self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus du Livret A")
 
