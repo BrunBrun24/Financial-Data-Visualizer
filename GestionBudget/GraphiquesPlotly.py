@@ -297,9 +297,10 @@ class GraphiqueFinancier():
 
         if not compteCourant:
             self.LivretA()
-        elif not self.dfRevenus.empty:
+        elif (not self.dfRevenus.empty) and (not self.dfDepenses.empty):
             self.CompteCourantRevenusDepenses()
-            
+        elif (not self.dfRevenus.empty) and (self.dfDepenses.empty):
+            self.CompteCourantUniquementRevenus()
         else:
             self.CompteCourantUniquementDepenses()
 
@@ -363,6 +364,21 @@ class GraphiqueFinancier():
         df_filtré = self.dfDepenses[self.dfDepenses['category'] != 'Investissement']
         self.GraphiqueCirculaire(df=df_filtré, name="Dépenses")
         self.GraphiqueCirculaire(df=self.dfDepenses, name="Dépenses + Investissement")
+
+        self.SaveInFile()
+
+    def CompteCourantUniquementRevenus(self):
+        """
+        Gère la génération des graphiques pour un compte courant avec uniquement des revenus.
+        """
+
+        # Filtrer les lignes où la colonne 'Type' n'est pas 'Virement interne'
+        df_filtré = self.dfRevenus[self.dfRevenus['Type'] != 'Virement interne']
+        fig_soleil_revenus = self.GraphiqueCirculaire(df=df_filtré, name="Revenus gagné", save=False)
+        fig_soleil_allRevenus = self.GraphiqueCirculaire(df=self.dfRevenus, name="Revenus gagné + Virement interne", save=False)
+
+        # Création des graphiques dans l'ordre dans le fichier
+        self.CombinerGraphiques(fig_soleil_revenus, fig_soleil_allRevenus)
 
         self.SaveInFile()
 
