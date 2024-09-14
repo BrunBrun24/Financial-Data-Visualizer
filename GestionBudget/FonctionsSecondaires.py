@@ -83,21 +83,51 @@ def DiviserParMois(data: dict) -> dict:
     
     return result
 
-def SaveDictToJson(dataDict, filePath):
+def TrierToutesCategoriesParDate(dataDict):
     """
-    Sauvegarde un dictionnaire dans un fichier JSON, en convertissant les objets pandas Timestamp en chaînes de caractères.
+    Trie toutes les catégories dans le dictionnaire par date d'opération si elles contiennent des opérations.
 
     Args:
-        data_dict (dict): Le dictionnaire à sauvegarder.
-        file_path (str): Le chemin du fichier JSON où les données doivent être sauvegardées.
+        dataDict (dict): Dictionnaire contenant les opérations financières.
+    
+    Returns:
+        dict: Le même dictionnaire avec toutes les catégories triées par date.
     """
     assert isinstance(dataDict, dict), f"dataDict n'est pas un dict {type(dataDict).__name__}"
-    assert isinstance(filePath, str), f"dataDict n'est pas un dict {type(filePath).__name__}"
+    
+    # Parcourir chaque catégorie du dictionnaire
+    for categorie, operations in dataDict.items():
+        # Si la catégorie contient une liste d'opérations
+        if isinstance(operations, list) and operations and "DATE D'OPÉRATION" in operations[0]:
+            # Trier la liste d'opérations par la clé 'DATE D'OPÉRATION'
+            dataDict[categorie] = sorted(
+                operations, 
+                key=lambda x: pd.to_datetime(x["DATE D'OPÉRATION"], format='%Y-%m-%d')
+            )
+    
+    return dataDict
+
+def SaveDictToJson(dataDict, filePath):
+    """
+    Sauvegarde un dictionnaire dans un fichier JSON, après avoir trié toutes les catégories par date d'opération.
+    Convertit également les objets pandas Timestamp en chaînes de caractères.
+
+    Args:
+        dataDict (dict): Le dictionnaire à sauvegarder.
+        filePath (str): Le chemin du fichier JSON où les données doivent être sauvegardées.
+    """
+    assert isinstance(dataDict, dict), f"dataDict n'est pas un dict {type(dataDict).__name__}"
+    assert isinstance(filePath, str), f"filePath n'est pas un str {type(filePath).__name__}"
+    
+    # Trier toutes les catégories par date d'opération
+    dataDict = TrierToutesCategoriesParDate(dataDict)
+    
     def convert_timestamp_to_string(obj):
         if isinstance(obj, pd.Timestamp):
             return obj.isoformat()
         raise TypeError(f"Type non serialisable: {type(obj).__name__}")
 
+    # Sauvegarde du dictionnaire trié dans un fichier JSON
     with open(filePath, 'w', encoding='utf-8') as file:
         json.dump(dataDict, file, indent=4, default=convert_timestamp_to_string, ensure_ascii=False)
 
