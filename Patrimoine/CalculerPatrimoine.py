@@ -106,7 +106,7 @@ class Patrimoine:
         # Vérifie que les colonnes d'intérêt existent dans dfSource
         assert colonneIndexSource in dfSource.columns, f"Colonne {colonneIndexSource} inexistante dans dfSource."
         assert colonneADeplacerSource in dfSource.columns, f"Colonne {colonneADeplacerSource} inexistante dans dfSource."
-        
+
         # Vérifie que la colonne de destination existe dans self.tradeRepublic
         assert colonneDestination in self.tradeRepublic.columns, f"Colonne {colonneDestination} inexistante dans self.tradeRepublic."
 
@@ -528,7 +528,7 @@ class Patrimoine:
         df = self.patrimoine.copy()
 
         # Remplir les valeurs manquantes pour toutes les colonnes sauf certaine d'entre elles
-        colsSauf = df.columns.difference(['Bourse', 'Compte Courant'])
+        colsSauf = df.columns.difference(['Bourse'])
         df[colsSauf] = df[colsSauf].fillna(method="ffill")
         df.fillna(method="bfill")
 
