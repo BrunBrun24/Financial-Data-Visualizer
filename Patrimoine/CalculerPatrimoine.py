@@ -534,9 +534,12 @@ class Patrimoine:
 
         df.sort_index(inplace=True)
         df["Patrimoine"] = df.sum(axis=1)
-        df = self.ReorganiserColonnesParValeurDerniereLigne(df)
         dfPourCalulerLePourcentage = df.copy()
         df = self.SelectionnerDates(df, freq)
+        # On enlève le patrimoine pour pouvoir le remettre avec les données actuelles
+        del df["Patrimoine"]
+        df["Patrimoine"] = df.sum(axis=1)
+        df = self.ReorganiserColonnesParValeurDerniereLigne(df)
 
         colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
 
