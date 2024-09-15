@@ -8,8 +8,8 @@ from datetime import datetime
 
 class Patrimoine:
     """
-    La classe `Patrimoine` est conçue pour gérer et analyser l'évolution du patrimoine financier à partir de transactions. 
-    Elle permet de charger des données depuis des fichiers JSON, de calculer l'évolution du patrimoine quotidiennement, 
+    La classe `Patrimoine` est conçue pour gérer et analyser l'évolution du patrimoine financier à partir de transactions.
+    Elle permet de charger des données depuis des fichiers JSON, de calculer l'évolution du patrimoine quotidiennement,
     de transformer les données en différents formats, et de visualiser les résultats à l'aide de graphiques interactifs.
 
     Attributs:
@@ -36,9 +36,9 @@ class Patrimoine:
 
     def __init__(self) -> None:
         """Initialise le patrimoine avec des montants fixes et un DataFrame vide pour enregistrer les transactions."""
-        # Argent initial (2022-10-27)
-        self.argentCompteCourant = 264.13
-        self.argentLivretA = 10045.71
+        # Argent initial (2014-10-27)
+        self.argentCompteCourant = 0
+        self.argentLivretA = 3816.42
         self.patrimoine = pd.DataFrame()
         self.tradeRepublic = pd.DataFrame(columns=["Dépôts d'argent", "Argents investis", "Argents vendus", "Dividendes", "Interêts", "Dépenses"])
 
@@ -60,12 +60,12 @@ class Patrimoine:
 
 
     ################# BOURSE #################
-    def EvolutionTradeRepublic(self):
+    def EvolutionTradeRepublic(self) -> None:
         """
         Charge les données des fichiers JSON et les ajoutent à un DataFrame existant sous le nom de colonne 'Bourse'
         """
         directory = "Bilan/Archives/Bourse/"
-        assert os.path.isdir(directory), "Le dossier n'exsiste pas"
+        assert os.path.isdir(directory), f"Le dossier n'exsiste pas: {directory}"
 
         # L'ordre dans le dictionnaire définit la continuité des feuilles dans le fichier Excel
         operations = [
@@ -98,18 +98,18 @@ class Patrimoine:
             None
         """
         # Vérifications des types des arguments
-        assert isinstance(dfSource, pd.DataFrame), f"dfSource doit être un pd.DataFrame, mais c'est {type(dfSource).__name__}."
-        assert isinstance(colonneIndexSource, str), f"colonneIndexSource doit être une chaîne, mais c'est {type(colonneIndexSource).__name__}."
-        assert isinstance(colonneADeplacerSource, str), f"colonneADeplacerSource doit être une chaîne, mais c'est {type(colonneADeplacerSource).__name__}."
-        assert isinstance(colonneDestination, str), f"colonneDestination doit être une chaîne, mais c'est {type(colonneDestination).__name__}."
-        
+        assert isinstance(dfSource, pd.DataFrame), f"dfSource doit être un pd.DataFrame: {type(dfSource).__name__}."
+        assert isinstance(colonneIndexSource, str), f"colonneIndexSource doit être une chaîne: {type(colonneIndexSource).__name__}."
+        assert isinstance(colonneADeplacerSource, str), f"colonneADeplacerSource doit être une chaîne: {type(colonneADeplacerSource).__name__}."
+        assert isinstance(colonneDestination, str), f"colonneDestination doit être une chaîne: {type(colonneDestination).__name__}."
+
         # Vérifie que les colonnes d'intérêt existent dans dfSource
         assert colonneIndexSource in dfSource.columns, f"Colonne {colonneIndexSource} inexistante dans dfSource."
         assert colonneADeplacerSource in dfSource.columns, f"Colonne {colonneADeplacerSource} inexistante dans dfSource."
         
         # Vérifie que la colonne de destination existe dans self.tradeRepublic
         assert colonneDestination in self.tradeRepublic.columns, f"Colonne {colonneDestination} inexistante dans self.tradeRepublic."
-        
+
         # Ajoute les données de dfSource à self.tradeRepublic
         for _, row in dfSource.iterrows():
             index = row[colonneIndexSource]
@@ -118,7 +118,7 @@ class Patrimoine:
             # Si l'index n'existe pas encore dans self.tradeRepublic, ajoute-le
             if index not in self.tradeRepublic.index:
                 self.tradeRepublic.loc[index] = [0] * len(self.tradeRepublic.columns)
-            
+
             # Ajoute le prix à la valeur existante ou l'initialise si c'est NaN
             if pd.isna(self.tradeRepublic.at[index, colonneDestination]):
                 self.tradeRepublic.at[index, colonneDestination] = prix
@@ -140,15 +140,15 @@ class Patrimoine:
 
         with open(path, 'r', encoding='utf-8') as file:
             data = json.load(file)
-        
+
         assert isinstance(data, list), "Le contenu du fichier JSON doit être une liste d'objets (dict)."
-        
+
         # Conversion des données en DataFrame
         dataFrame = pd.DataFrame(data)
-        
+
         return dataFrame
 
-    
+
     def EvolutionDuPatrimoineBourse(self, cheminFichierJson: str) -> pd.DataFrame:
         """
         Charge les données d'un fichier JSON et les ajoutent à un DataFrame existant sous le nom de colonne 'Bourse'.
@@ -162,19 +162,19 @@ class Patrimoine:
         """
         # Vérifications des types des arguments
         assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
-            f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson).__name__}."
+            f"cheminFichierJson doit être une chaîne se terminant par '.json': {type(cheminFichierJson).__name__}."
 
         # Lire le fichier JSON
         with open(cheminFichierJson, 'r', encoding="utf-8") as f:
             jsonData = f.read()
-        
+
         # Convertir le JSON en dictionnaire
         dictData = json.loads(jsonData)
-        
+
         # Convertir le dictionnaire en DataFrame
         dataFrameJson = pd.DataFrame(list(dictData.items()), columns=['Date', 'Bourse'])
         dataFrameJson['Date'] = pd.to_datetime(dataFrameJson['Date'])  # Convertir la colonne 'Date' en type datetime
-        
+
         # Assurer que les dates du nouveau DataFrame sont uniques et triées
         dataFrameJson = dataFrameJson.set_index('Date').sort_index()
         portefeuilleTradeRepublic = dataFrameJson
@@ -190,13 +190,13 @@ class Patrimoine:
 
     def ModificationTradeRepublic(self) -> pd.DataFrame:
         """
-        Modifie le DataFrame de Trade Republic en ajoutant les dates manquantes, puis calcule le bilan avec et sans ajustement 
-        pour lisser les dépôts d'argent. 
-        
-        La méthode crée un nouvel index avec des dates continues, fusionne le DataFrame original avec cet index, remplit les 
+        Modifie le DataFrame de Trade Republic en ajoutant les dates manquantes, puis calcule le bilan avec et sans ajustement
+        pour lisser les dépôts d'argent.
+
+        La méthode crée un nouvel index avec des dates continues, fusionne le DataFrame original avec cet index, remplit les
         valeurs manquantes avec zéro, puis calcule deux colonnes de bilan : une avec les dépôts ajustés (décalés de deux jours)
-        et une sans ajustement. 
-        
+        et une sans ajustement.
+
         Returns:
             pd.DataFrame: Un DataFrame contenant deux colonnes de bilan ('Bilan true' et 'Bilan false').
         """
@@ -223,13 +223,13 @@ class Patrimoine:
         newIndex = pd.DataFrame(index=dateRange)
         # Fusionner le DataFrame avec les dates manquantes avec l'ancien DataFrame
         tradeRepublicModifie = newIndex.join(tradeRepublicModifie, how='left')
-        
+
         nouvelleDataFrame = pd.DataFrame(index=tradeRepublicModifie.index)
         tradeRepublicModifie.fillna(0, inplace=True)
         # Calculer le bilan en utilisant les colonnes des transactions financières
         nouvelleDataFrame['Bilan true'] = tradeRepublicModifie["Dépôts d'argent"].cumsum() + tradeRepublicModifie['Argents investis'].cumsum() + tradeRepublicModifie['Argents vendus'].cumsum() + tradeRepublicModifie['Dividendes'].cumsum() + tradeRepublicModifie['Interêts'].cumsum() - tradeRepublicModifie['Dépenses'].cumsum()
 
-        
+
         ################ On décale les montants des dépôts pour que le niveau du patrimoine soit lisse au lieu d'avoir des pics ################
         nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse = pd.DataFrame()
         nouvelleDataFrameAdapteAuPatrimoinePourEtreLisse['Dépôts d\'argent'] = tradeRepublicModifie['Dépôts d\'argent']
@@ -239,10 +239,10 @@ class Patrimoine:
         tradeRepublicModifie.fillna(0, inplace=True)
         # Calculer le bilan en utilisant les colonnes des transactions financières
         nouvelleDataFrame['Bilan false'] = tradeRepublicModifie["Dépôts d'argent"].cumsum() + tradeRepublicModifie['Argents investis'].cumsum() + tradeRepublicModifie['Argents vendus'].cumsum() + tradeRepublicModifie['Dividendes'].cumsum() + tradeRepublicModifie['Interêts'].cumsum() - tradeRepublicModifie['Dépenses'].cumsum()
-        
+
         return nouvelleDataFrame
 
-    # Livret, Compte, ...
+    ################# Livret, Compte, #################
     def EvolutionDuPatrimoine(self, nomDuCompte: str, argent: float, dossierCompte: str) -> pd.DataFrame:
         """
         Calcule l'évolution du patrimoine quotidiennement basé sur les transactions trouvées dans les fichiers JSON.
@@ -293,7 +293,12 @@ class Patrimoine:
         # Convertir l'index en datetime
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
-        
+
+        if "Bourse" in df.columns:
+            firstDateBourse = df['Bourse'].first_valid_index()
+        if "Compte Courant" in df.columns:
+            firstDateCompteCourant = df['Compte Courant'].first_valid_index()
+
         # Déterminer les dates à inclure selon la fréquence choisie
         if freq == 'D':
             period_range = pd.date_range(df.index.min(), df.index.max(), freq='D')
@@ -320,7 +325,7 @@ class Patrimoine:
             non_nan = df[[column]].dropna()
             # Créer une série de valeurs manquantes
             missing_values = newDf[newDf[column].isna()]
-            
+
             if not non_nan.empty:
                 # Trouver les dates les plus proches pour les valeurs manquantes
                 indexer = non_nan.index.get_indexer(missing_values.index, method='nearest')
@@ -332,6 +337,13 @@ class Patrimoine:
 
         if freq == 'Y':
             newDf.index = [i.strftime('%Y') for i in newDf.index]
+
+        if "Bourse" in newDf.columns:
+            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
+            newDf.loc[newDf.index < firstDateBourse, 'Bourse'] = 0
+        if "Compte Courant" in newDf.columns:
+            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
+            newDf.loc[newDf.index < firstDateCompteCourant, 'Compte Courant'] = 0
 
         return newDf
 
@@ -410,18 +422,16 @@ class Patrimoine:
 
         df.reset_index(inplace=True)
         df.rename(columns={'index': 'Date'}, inplace=True)
-        # df_long = df.melt(id_vars='Date', var_name='Type', value_name='Montant')
-        # df_long = df_long[['Date', 'Type', 'Montant']]
         return df
-    
+
 
     def AfficherGraphiqueHistogrammeSuperpose(self, freq: str) -> None:
         """
-        Affiche un histogramme superposé des montants pour toutes les colonnes du DataFrame à une fréquence donnée, 
+        Affiche un histogramme superposé des montants pour toutes les colonnes du DataFrame à une fréquence donnée,
         excepté la colonne 'Date'.
 
-        Cette fonction utilise les données du DataFrame de patrimoine, applique la transformation en fonction de la 
-        fréquence spécifiée, filtre les lignes contenant des valeurs manquantes, puis crée un histogramme superposé 
+        Cette fonction utilise les données du DataFrame de patrimoine, applique la transformation en fonction de la
+        fréquence spécifiée, filtre les lignes contenant des valeurs manquantes, puis crée un histogramme superposé
         des montants pour toutes les colonnes à l'aide de Plotly Express.
 
         Args:
@@ -430,22 +440,11 @@ class Patrimoine:
         Returns:
             None
         """
-        assert isinstance(self.patrimoine, pd.DataFrame), f"self.patrimoine doit être un DataFrame, mais c'est {type(self.patrimoine).__name__}."
-        assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q', mais c'est '{freq}'."
-        
+        assert isinstance(self.patrimoine, pd.DataFrame), f"self.patrimoine doit être un DataFrame: {type(self.patrimoine).__name__}."
+        assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q': '{freq}'."
+
         df = self.patrimoine.copy()
-        
-        if "Bourse" in df.columns:
-            # Récupérer la première date de la colonne Bourse
-            if freq in ["M", "Q"]:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-            elif freq == "Y":
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
-            else:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-
         df = self.ReorganiserColonnesParValeurDerniereLigne(df)
-
         df = self.TransformerDataframe(df, freq)
 
         assert 'Date' in df.columns, "La colonne 'Date' est manquante dans le DataFrame."
@@ -453,11 +452,6 @@ class Patrimoine:
         # Sélectionner toutes les colonnes sauf 'Date' pour l'histogramme
         colonnes = [col for col in df.columns if col != 'Date']
         assert len(colonnes) > 0, "Aucune colonne à afficher hormis la colonne 'Date'."
-        
-        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
-        if "Bourse" in df.columns:
-            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
-            df.loc[df['Date'] < firstDateBourse, 'Bourse'] = 0
 
         # Filtrer les lignes où les colonnes sélectionnées n'ont pas de NaN
         dfiltered = df.dropna(subset=colonnes)
@@ -472,46 +466,31 @@ class Patrimoine:
             height=900
         )
 
-        # Afficher le graphique
         fig.show()
 
     def AfficherGraphiqueCoteACote(self, freq: str) -> None:
         """
-        Affiche un graphique en barres côte à côte pour les montants de chaque colonne du DataFrame 
+        Affiche un graphique en barres côte à côte pour les montants de chaque colonne du DataFrame
         sur une période déterminée par la fréquence spécifiée.
 
-        La fonction sélectionne les données en fonction de la fréquence, filtre les lignes sans valeurs manquantes, 
-        puis affiche un graphique avec des barres pour chaque colonne du DataFrame. Les barres sont colorées et affichées 
+        La fonction sélectionne les données en fonction de la fréquence, filtre les lignes sans valeurs manquantes,
+        puis affiche un graphique avec des barres pour chaque colonne du DataFrame. Les barres sont colorées et affichées
         côte à côte avec une personnalisation de l'espacement.
 
         Args:
             freq (str): Fréquence des dates à utiliser pour filtrer le DataFrame. Peut être 'D', 'M', 'Y', 'W', ou 'Q'.
-        
+
         Returns:
             None
         """
-        assert isinstance(self.patrimoine, pd.DataFrame), f"self.patrimoine doit être un DataFrame, mais c'est {type(self.patrimoine).__name__}."
-        assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q', mais c'est '{freq}'."
-        
+        assert isinstance(self.patrimoine, pd.DataFrame), f"self.patrimoine doit être un DataFrame: {type(self.patrimoine).__name__}."
+        assert freq in ['D', 'M', 'Y', 'W', 'Q'], f"La fréquence doit être 'D', 'M', 'Y', 'W', ou 'Q': '{freq}'."
+
         df = self.patrimoine.copy()
-        if "Bourse" in df.columns:
-            # Récupérer la première date de la colonne Bourse
-            if freq in ["M", "Q"]:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-            elif freq == "Y":
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
-            else:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-
         df = self.SelectionnerDates(df, freq)
-        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
-        if "Bourse" in df.columns:
-            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
-            df.loc[df.index < firstDateBourse, 'Bourse'] = 0
-
         df = df.dropna()
 
-        colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 
+        colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)',
                 'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
 
         fig = go.Figure()
@@ -536,7 +515,7 @@ class Patrimoine:
 
         # Afficher le graphique
         fig.show()
-    
+
     def AfficheGraphiqueInteractif(self, freq="D") -> None:
         """
         Affiche un graphique interactif avec Plotly montrant l'évolution du patrimoine.
@@ -548,24 +527,11 @@ class Patrimoine:
 
         df = self.patrimoine.copy()
 
-        if "Bourse" in df.columns:
-            # Récupérer la première date de la colonne Bourse
-            if freq in ["M", "Q"]:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-            elif freq == "Y":
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y")
-            else:
-                firstDateBourse = df['Bourse'].first_valid_index().strftime("%Y-%m")
-        
-        # Remplir les valeurs manquantes pour toutes les colonnes sauf 'Bourse'
-        colsSaufBourse = df.columns.difference(['Bourse'])
-        df[colsSaufBourse] = df[colsSaufBourse].fillna(method="ffill").fillna(method="bfill")
-        
-        # Remettre la colonne 'Bourse' après avoir manipulé les autres colonnes
-        if "Bourse" in df.columns:
-            # Remplacer les valeurs avant la première date valide de 'Bourse' par 0
-            df.loc[df.index < firstDateBourse, 'Bourse'] = 0
-        
+        # Remplir les valeurs manquantes pour toutes les colonnes sauf certaine d'entre elles
+        colsSauf = df.columns.difference(['Bourse', 'Compte Courant'])
+        df[colsSauf] = df[colsSauf].fillna(method="ffill")
+        df.fillna(method="bfill")
+
         df.sort_index(inplace=True)
         df["Patrimoine"] = df.sum(axis=1)
         df = self.ReorganiserColonnesParValeurDerniereLigne(df)
@@ -573,7 +539,7 @@ class Patrimoine:
         df = self.SelectionnerDates(df, freq)
 
         colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
-        
+
         # Créer la figure
         fig = go.Figure()
         buttons = []
@@ -595,7 +561,7 @@ class Patrimoine:
             baseline = minValue - 250
             if baseline < 0:
                 baseline = 0
-            
+
             # Ajouter la ligne de base (remplissage en dessous)
             fig.add_trace(go.Scatter(
                 x=df.index,
@@ -698,12 +664,12 @@ class Patrimoine:
 
         # Définir les couleurs pour chaque colonne avec une transparence ajustée
         colors = [
-            'rgba(99, 110, 250, 0.4)',  # Bleu clair
-            'rgba(239, 85, 59, 0.4)',   # Rouge clair
-            'rgba(0, 204, 150, 0.4)',   # Vert clair
-            'rgba(171, 99, 250, 0.4)',  # Violet clair
-            'rgba(255, 161, 90, 0.4)',  # Orange clair
-            'rgba(25, 211, 243, 0.4)'   # Cyan clair
+            'rgba(99, 110, 250, 0.2)',  # Bleu clair
+            'rgba(239, 85, 59, 0.2)',   # Rouge clair
+            'rgba(0, 204, 150, 0.2)',   # Vert clair
+            'rgba(171, 99, 250, 0.2)',  # Violet clair
+            'rgba(255, 161, 90, 0.2)',  # Orange clair
+            'rgba(25, 211, 243, 0.2)'   # Cyan clair
         ]
 
         # Tracer le graphique en aires empilées avec Plotly Express
@@ -711,7 +677,7 @@ class Patrimoine:
             df,
             x=df.index,
             y=df.columns,
-            title="Evolution du patrimoine empilé sans total",
+            title="Evolution du patrimoine",
             labels={"value": "Prix (€)", "variable": "Livret", "Date": "Date"},
             template="plotly_white",
             color_discrete_sequence=colors  # Appliquer les couleurs définies
@@ -719,11 +685,12 @@ class Patrimoine:
 
         # Mettre à jour la mise en page
         fig.update_layout(
+            xaxis_title=None,
             yaxis=dict(title='Prix (€)', tickprefix="€"),
             height=900,
             margin=dict(b=150)
         )
-        
+
         fig.show()
 
 
@@ -743,39 +710,40 @@ class Patrimoine:
         df_modifie = df.copy()
 
         # Traiter la colonne 'Bourse'
-        col_bourse = 'Bourse'
-        if col_bourse in df_modifie.columns:
-            # Trouver les valeurs répétées au début
-            df_bourse = df_modifie[col_bourse]
-            first_diff = df_bourse.ne(df_bourse.shift()).cumsum()
-            df_modifie[col_bourse] = df_bourse.where(first_diff != 1, 0)
+        column = ['Bourse', "Compte Courant"]
+        for col in column:
+            if col in df_modifie.columns:
+                # Trouver les valeurs répétées au début
+                df_bourse = df_modifie[col]
+                first_diff = df_bourse.ne(df_bourse.shift()).cumsum()
+                df_modifie[col] = df_bourse.where(first_diff != 1, 0)
 
         return df_modifie
 
     @staticmethod
     def DetermineColor(value) -> tuple:
         """
-        Détermine la couleur à utiliser en fonction de la valeur donnée. 
-        Si la valeur est positive ou nulle, la couleur sera verte; 
+        Détermine la couleur à utiliser en fonction de la valeur donnée.
+        Si la valeur est positive ou nulle, la couleur sera verte;
         si elle est négative, la couleur sera rouge.
 
         Args:
             value (float): La valeur pour laquelle la couleur doit être déterminée. Peut être positive, négative, ou nulle.
 
         Returns:
-            tuple: Une paire de chaînes représentant la couleur principale et une version transparente de celle-ci. 
-            Pour une valeur positive ou nulle, cela retourne ('lightgreen', 'rgba(144, 238, 144, 0.3)'). 
+            tuple: Une paire de chaînes représentant la couleur principale et une version transparente de celle-ci.
+            Pour une valeur positive ou nulle, cela retourne ('lightgreen', 'rgba(144, 238, 144, 0.3)').
             Pour une valeur négative, cela retourne ('lightcoral', 'rgba(255, 99, 71, 0.3)').
         """
         if value >= 0:
             return 'lightgreen', 'rgba(144, 238, 144, 0.3)'
         else:
             return 'lightcoral', 'rgba(255, 99, 71, 0.3)'
-        
+
     def ObtenirAnnotations(self, df: pd.DataFrame, livret: str) -> list:
         """
         Génère des annotations pour un graphique Plotly basées sur les pourcentages de variation moyenne mensuelle et annuelle
-        pour une colonne spécifique d'un DataFrame. Les annotations indiquent les évolutions en pourcentage avec des couleurs 
+        pour une colonne spécifique d'un DataFrame. Les annotations indiquent les évolutions en pourcentage avec des couleurs
         différentes selon la tendance (positive ou négative) et s'adaptent dynamiquement à la taille du texte.
 
         Args:
@@ -786,7 +754,7 @@ class Patrimoine:
             list: Liste de dictionnaires représentant les annotations pour Plotly, avec les pourcentages de variation
                 et des bordures colorées en fonction de la tendance (positif = vert, négatif = rouge).
         """
-        assert isinstance(df, pd.DataFrame), f"La variable patrimoine doit être une DataFrame: ({type(df).__name__})"
+        assert isinstance(df, pd.DataFrame), f"La variable patrimoine doit être un DataFrame: ({type(df).__name__})"
         assert isinstance(livret, str), "Le paramètre livret doit être une chaîne de caractères."
         assert livret in df.columns, f"La colonne '{livret}' n'existe pas dans le DataFrame."
 
@@ -869,7 +837,7 @@ class Patrimoine:
         Returns:
             pd.DataFrame: DataFrame avec les colonnes réorganisées.
         """
-        assert isinstance(df, pd.DataFrame), f"Le paramètre 'df' doit être un DataFrame, mais c'est {type(df).__name__}."
+        assert isinstance(df, pd.DataFrame), f"Le paramètre 'df' doit être un DataFrame: {type(df).__name__}."
 
         # Obtenir les valeurs de la dernière ligne
         valeurs_derniere_ligne = df.iloc[-1]
