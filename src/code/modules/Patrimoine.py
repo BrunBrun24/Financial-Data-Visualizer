@@ -527,7 +527,7 @@ class Patrimoine:
 
         df = self.patrimoine.copy()
 
-        # Remplir les valeurs manquantes pour toutes les colonnes sauf certaine d'entre elles
+        # Remplir les valeurs manquantes pour toutes les colonnes sauf certaines d'entre elles
         colsSauf = df.columns.difference(['Bourse'])
         df[colsSauf] = df[colsSauf].fillna(method="ffill")
         df.fillna(method="bfill")
@@ -536,18 +536,21 @@ class Patrimoine:
         df["Patrimoine"] = df.sum(axis=1)
         dfPourCalulerLePourcentage = df.copy()
         df = self.SelectionnerDates(df, freq)
+        
         # On enlève le patrimoine pour pouvoir le remettre avec les données actuelles
         del df["Patrimoine"]
         df["Patrimoine"] = df.sum(axis=1)
         df = self.ReorganiserColonnesParValeurDerniereLigne(df)
 
-        colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
+        colors = ['rgba(99, 110, 250, 1)', 'rgba(239, 85, 59, 1)', 'rgba(0, 204, 150, 1)', 
+                'rgba(171, 99, 250, 1)', 'rgba(255, 161, 90, 1)', 'rgba(25, 211, 243, 1)']
 
         # Créer la figure
         fig = go.Figure()
         buttons = []
 
-        # Ajouter les traces pour chaque colonne
+        # Ajouter les traces pour chaque colonne et calculer la plage de dates non nulles
+        date_ranges = {}
         for i, livret in enumerate(df.columns):
             fig.add_trace(go.Scatter(
                 x=df.index,
@@ -577,6 +580,13 @@ class Patrimoine:
                 visible=(i == 0)
             ))
 
+            # Calculer les dates non nulles
+            non_null_dates = df[df[livret] > 0].index
+            if not non_null_dates.empty:
+                date_ranges[livret] = (non_null_dates.min(), non_null_dates.max())
+            else:
+                date_ranges[livret] = (df.index.min(), df.index.max())  # Si toutes les valeurs sont nulles
+
             # Gérer la visibilité pour les courbes et les lignes de base
             visibility = [False] * (2 * len(df.columns))  # 2 traces (courbe et ligne de base) par livret
             visibility[i * 2] = True  # Affiche la courbe correspondante
@@ -586,9 +596,14 @@ class Patrimoine:
             buttons.append(dict(
                 label=livret,
                 method='update',
-                args=[{'visible': visibility},
-                    {'title': f'Evolution du {livret}',
-                    'annotations': self.ObtenirAnnotations(dfPourCalulerLePourcentage, livret)}]
+                args=[
+                    {'visible': visibility},
+                    {
+                        'title': f'Evolution du {livret}',
+                        'annotations': self.ObtenirAnnotations(dfPourCalulerLePourcentage, livret),
+                        'xaxis.range': date_ranges[livret]  # Mise à jour de la plage de dates
+                    }
+                ]
             ))
 
         # Ajout des boutons de plage de date

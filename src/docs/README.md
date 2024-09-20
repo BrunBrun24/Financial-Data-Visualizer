@@ -13,7 +13,12 @@ Ce projet contient plusieurs classes Python conçues pour faciliter la gestion, 
 - Faire une interface graphique avec plusieurs options permettant de choisir ce que l'on veut faire.
    - Choisir de mettre à jour les données sur la bourse
    - Choisir de catégoriser les nouvelles dépenses
-   - Choisir les graphiques que l'on veut visualiser
+   - Choisir les graphiques que l'on veut visualiser  => Bourse => Progression du portefeuille en pourcentage
+                                                               => Progression du portefeuille en euro
+                                                               => Répartition portefeuille
+                                                      => Banque => Livret A
+                                                                => Compte Courant
+
 
 ## Utilisation
 

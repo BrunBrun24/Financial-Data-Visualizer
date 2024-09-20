@@ -7,6 +7,7 @@ import os
 from collections import defaultdict
 import numpy as np
 
+
 class TradeRepublicPerformance:
     """
     La classe TradeRepublicPerformance est conçue pour analyser et visualiser la performance des transactions boursières
@@ -559,7 +560,8 @@ class TradeRepublicPerformance:
 
         return round(argentInvesti)
 
-    def PlotlyInteractivePlot(self, df: pd.DataFrame, title="") -> None:
+    @staticmethod
+    def PlotlyInteractivePlot(df: pd.DataFrame, title="") -> None:
         """
         Crée et affiche un graphique interactif avec Plotly en utilisant les données fournies.
 
@@ -606,3 +608,132 @@ class TradeRepublicPerformance:
 
         fig.show()
 
+    @staticmethod
+    def SunburstPortefeuille(data: dict, name: str):
+        """
+        Génère un graphique en soleil représentant la répartition d'un portefeuille.
+
+        Args:
+            data (dict): Dictionnaire contenant comme clef les tickers et comme valeur leur pourcentage.
+            name (str): Nom à afficher au centre du graphique.
+
+        Returns:
+            None: Affiche le graphique en soleil (sunburst).
+        """
+
+        assert isinstance(data, dict), f"Le paramètre 'data' doit être un dictionnaire, mais {type(data).__name__} a été donné."
+        assert isinstance(name, str), f"Le paramètre 'name' doit être une chaîne de caractères, mais {type(name).__name__} a été donné."
+
+        # Arrondir les valeurs à deux chiffres après la virgule
+        dataArrondi = {k: round(v, 2) for k, v in data.items()}
+
+        # Préparation des données pour le graphique
+        labels = list(dataArrondi.keys())  # Les tickers
+        values = list(dataArrondi.values())  # Les pourcentages associés
+
+
+        # Créer le graphique Sunburst
+        fig = go.Figure(go.Sunburst(
+            labels=[name] + labels,  # Ajouter le nom au centre
+            parents=[""] + [name] * len(labels),  # Le centre est parent de tous les tickers
+            values=[None] + values,  # Les valeurs, avec None pour le centre
+            branchvalues="total",  # Les valeurs sont les pourcentages d'un tout
+        ))
+
+        # Mise en forme
+        fig.update_layout(
+            sunburstcolorway=["#636efa", "#EF553B", "#00cc96", "#ab63fa", "#19d3f3", 
+                            "#e763fa", "#fecb52", "#ffa15a", "#ff6692", "#b6e880"],
+            margin=dict(t=40, l=0, r=0, b=0)
+        )
+
+        fig.show()
+
+
+
+
+
+    @staticmethod
+    def EnregistrerDataFrameEnJson(dataFrame: pd.DataFrame, cheminFichierJson: str) -> None:
+        """
+        Enregistre un DataFrame au format JSON dans le fichier spécifié, avec les dates comme clés et les montants comme valeurs.
+
+        Args:
+            dataFrame (pd.DataFrame): Le DataFrame à enregistrer. L'index doit être constitué de dates, et le DataFrame doit avoir une seule colonne avec les montants.
+            cheminFichierJson (str): Le chemin du fichier JSON dans lequel enregistrer le DataFrame.
+
+        Returns:
+            None
+        """
+        # Vérifications des types des arguments
+        assert isinstance(dataFrame, pd.DataFrame), f"dataFrame doit être un pd.DataFrame, mais c'est {type(dataFrame).__name__}."
+        assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
+            f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson).__name__}."
+
+        # Vérifier que l'index du DataFrame est constitué de dates
+        assert pd.api.types.is_datetime64_any_dtype(dataFrame.index), "L'index du DataFrame doit être de type datetime."
+
+        # Vérifier que le DataFrame a exactement une colonne
+        assert dataFrame.shape[1] == 1, "Le DataFrame doit contenir exactement une colonne avec les montants."
+
+        # Convertir l'index en dates au format string et les valeurs en dictionnaire
+        dictData = dataFrame.reset_index()
+        dictData.columns = ['Date', 'Montant']
+        dictData['Date'] = dictData['Date'].dt.strftime('%Y-%m-%d')  # Convertir les dates au format 'YYYY-MM-DD'
+        dictData = dictData.set_index('Date')['Montant'].to_dict()
+
+        # Convertir le dictionnaire en JSON et l'enregistrer
+        jsonData = pd.Series(dictData).to_json(orient='index', indent=2)
+
+        # Écrire le JSON dans le fichier
+        with open(cheminFichierJson, 'w', encoding="utf-8") as f:
+            f.write(jsonData)
+
+    def RepartitionPortefeuille(self, date: str):
+        """
+        Calcule la répartition en pourcentage du portefeuille
+
+        Args:
+            date (str): Date à laquelle il faut calculer la répartition en pourcentage du portefeuille (%Y-%m-%d)
+
+        Returns:
+            dict: Dictionnaire contenant comme clef les tickers et comme valeur leur pourcentage,
+                trié par ordre décroissant et sans les valeurs manquantes ou nulles.
+        """
+        
+        assert isinstance(date, str), f"La date donnée n'est pas une chaîne de caractère: {type(date).__name__}"
+        dateObj = datetime.strptime(date, "%Y-%m-%d")
+        assert dateObj in self.evolutionPrixTickersBrut.index, f"La date {date} ne se trouve pas dans le DataFrame"
+        
+        # Sélection des valeurs des tickers pour la date donnée
+        valeursDate = self.evolutionPrixTickersBrut.loc[dateObj]
+        sommeTotale = valeursDate.sum()
+        
+        assert sommeTotale > 0, f"La somme des valeurs pour la date {date} est égale à zéro."
+        
+        # Calcul du pourcentage de chaque ticker
+        repartition = (valeursDate / sommeTotale) * 100
+        
+        # Suppression des valeurs manquantes (NaN) et des valeurs nulles
+        repartition = repartition.dropna()
+        repartition = repartition[repartition > 0]
+        
+        # Tri des valeurs par ordre décroissant
+        repartitionTrie = repartition.sort_values(ascending=False)
+        
+        # Retourne le résultat sous forme de dictionnaire {ticker: pourcentage}
+        return repartitionTrie.to_dict()
+
+
+
+
+
+
+
+
+
+
+# bourse = TradeRepublicPerformance("Bilan/Archives/Bourse/Transactions.json")
+# pourcentage = bourse.RepartitionPortefeuille("2024-09-16")
+# bourse.SunburstPortefeuille(pourcentage, "Portefeuille")
+# bourse.PlotlyInteractivePlot(bourse.GetEvolutionPourcentagePortefeuille())

@@ -1,6 +1,8 @@
 import json
 import pandas as pd
 from datetime import datetime
+import os
+import glob
 
 
 def ExtraireAnnee(data):
@@ -209,3 +211,43 @@ def CreerNomFichier(data: dict) -> str:
         return str(years[0])
     return f"{years[0]}-{years[-1]}"
 
+def LoadDictFromJson(filePath):
+        """
+        Lit un fichier JSON et le convertit en dictionnaire.
+
+        Args:
+            filePath (str): Le chemin du fichier JSON à lire.
+
+        Returns:
+            dict: Le dictionnaire lu à partir du fichier JSON.
+        """
+        assert isinstance(filePath, str), "filePath doit être une chaîne de caractères."
+
+        try:
+            with open(filePath, 'r', encoding='utf-8') as file:
+                dataDict = json.load(file)
+            return dataDict
+        except Exception as e:
+            raise AttributeError(f"Une erreur s'est produite lors de la lecture du fichier JSON : {str(e)}")
+        
+def RecupererFichiersJson(dossier):
+    """
+    Récupère tous les fichiers JSON dans le dossier spécifié.
+    
+    Args:
+        dossier (str): Chemin du dossier où chercher les fichiers JSON.
+        
+    Returns:
+        list: Liste des chemins complets des fichiers JSON trouvés.
+    """
+    # Vérification que le chemin du dossier est une chaîne valide
+    assert isinstance(dossier, str), f"dossier doit être une chaîne de caractères, mais c'est {type(dossier).__name__}."
+    
+    # Vérification que le dossier existe
+    assert os.path.isdir(dossier), f"Le dossier spécifié n'existe pas: {dossier}"
+    
+    # Utilisation de glob pour récupérer tous les fichiers .json
+    chemin_fichiers_json = os.path.join(dossier, "*.json")
+    fichiers_json = glob.glob(chemin_fichiers_json)
+    
+    return fichiers_json

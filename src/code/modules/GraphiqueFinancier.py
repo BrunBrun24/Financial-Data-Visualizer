@@ -1,4 +1,4 @@
-from Sankey import SankeyGenerator
+from modules.SankeyGenerator import SankeyGenerator
 
 import pandas as pd
 import plotly.express as px

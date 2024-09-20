@@ -4,6 +4,7 @@ import pandas as pd
 import tkinter as tk
 import re
 
+
 class OperationCategoriser:
     """
     La classe `CategorizeOperations` est conçue pour organiser et catégoriser des transactions financières 

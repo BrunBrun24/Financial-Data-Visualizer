@@ -2,7 +2,6 @@ import re
 import plotly.graph_objects as go
 
 
-
 class SankeyGenerator:
     """
     La classe `SankeyGenerator` permet de créer et de visualiser un graphique Sankey à partir de données de transactions financières.
