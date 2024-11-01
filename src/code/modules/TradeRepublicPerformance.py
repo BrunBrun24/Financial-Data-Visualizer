@@ -19,42 +19,20 @@ class TradeRepublicPerformance:
         fichierJson (str): Chemin vers le fichier JSON contenant les transactions.
         portfolioPercentage (list): Liste des portefeuilles, où chaque portefeuille est représenté par une liste contenant un dictionnaire d'actions avec leurs pourcentages, un montant à investir et un nom de portefeuille.
         nomDossier (str): Chemin vers le dossier où sauvegarder le fichier de sortie.
-        nomFichierSauvegarder (str): Nom du fichier de sortie (doit avoir une extension .html).
+        nomFichier (str): Nom du fichier de sortie (doit avoir une extension .html).
     """
 
-    def __init__(self, fichierJson: str, portfolioPercentage: list, nomDossier: str, nomFichierSauvegarder: str) -> None:
+    def __init__(self, fichierJson: str) -> None:
         """
         Initialise la classe avec les informations nécessaires pour la gestion des transactions et des fichiers.
 
         Args:
             fichierJson (str): Chemin vers le fichier JSON contenant les transactions.
-            portfolioPercentage (list): Liste des portefeuilles, où chaque portefeuille est représenté par une liste contenant un dictionnaire d'actions avec leurs pourcentages, un montant à investir et un nom de portefeuille.
-            nomDossier (str): Chemin vers le dossier où sauvegarder le fichier de sortie.
-            nomFichierSauvegarder (str): Nom du fichier de sortie (doit avoir une extension .html).
         """
         assert isinstance(fichierJson, str), f"fichierJson doit être une chaîne de caractères: ({fichierJson})"
         assert os.path.exists(fichierJson) and fichierJson.endswith('.json'), f"Le fichier {fichierJson} n'existe pas ou n'a pas l'extension .json."
-        
-        assert isinstance(portfolioPercentage, list), "portfolioPercentage doit être une liste de portefeuilles."
-        for portefeuille in portfolioPercentage:
-            assert isinstance(portefeuille, list) and len(portefeuille) == 3, \
-                "Chaque portefeuille doit être une liste contenant un dictionnaire, un montant, et une chaîne de caractère."
-            assert isinstance(portefeuille[0], dict), "Le premier élément du portefeuille doit être un dictionnaire des actions avec leurs pourcentages."
-            assert isinstance(portefeuille[1], (int, float)), "Le deuxième élément du portefeuille doit être un montant (int ou float)."
-            assert isinstance(portefeuille[2], str), "Le troisième élément du portefeuille doit être une chaîne de caractères représentant le nom du portefeuille."
-            for ticker, pourcentage in portefeuille[0].items():
-                assert isinstance(ticker, str), f"Chaque clé du dictionnaire (ticker) doit être une chaîne de caractères, mais '{ticker}' ne l'est pas."
-                assert isinstance(pourcentage, (int, float)), f"Chaque valeur du dictionnaire (pourcentage) doit être un nombre (int ou float), mais '{pourcentage}' ne l'est pas."
-
-        assert isinstance(nomDossier, str), "nomDossier doit être une chaîne de caractères"
-        assert os.path.exists(nomDossier), f"Le chemin '{nomDossier}' n'existe pas"
-
-        assert isinstance(nomFichierSauvegarder, str), f"nomFichierSauvegarder doit être une chaîne de caractères: ({nomFichierSauvegarder})"
-        assert nomFichierSauvegarder.endswith('.html'), f"Le fichier {nomFichierSauvegarder} n'a pas l'extension .html."
 
         self.fichierJson = fichierJson
-        self.portfolioPercentage = portfolioPercentage
-        self.cheminFichierSauvegarder = (nomDossier + nomFichierSauvegarder)
 
         self.pourcentageTickers = {}
         self.prixNetTickers = {}
@@ -67,6 +45,24 @@ class TradeRepublicPerformance:
 
         # Ajoute sur le graphique mon portefeuille
         self.MonPortefeuille()
+
+
+
+    #################### SETTERS ####################
+    def SetPortfolioPercentage(self, portfolioPercentage: list):
+        assert isinstance(portfolioPercentage, list), "portfolioPercentage doit être une liste de portefeuilles."
+        for portefeuille in portfolioPercentage:
+            assert isinstance(portefeuille, list) and len(portefeuille) == 3, \
+                "Chaque portefeuille doit être une liste contenant un dictionnaire, un montant, et une chaîne de caractère."
+            assert isinstance(portefeuille[0], dict), "Le premier élément du portefeuille doit être un dictionnaire des actions avec leurs pourcentages."
+            assert isinstance(portefeuille[1], (int, float)), "Le deuxième élément du portefeuille doit être un montant (int ou float)."
+            assert isinstance(portefeuille[2], str), "Le troisième élément du portefeuille doit être une chaîne de caractères représentant le nom du portefeuille."
+            for ticker, pourcentage in portefeuille[0].items():
+                assert isinstance(ticker, str), f"Chaque clé du dictionnaire (ticker) doit être une chaîne de caractères, mais '{ticker}' ne l'est pas."
+                assert isinstance(pourcentage, (int, float)), f"Chaque valeur du dictionnaire (pourcentage) doit être un nombre (int ou float), mais '{pourcentage}' ne l'est pas."
+
+        self.portfolioPercentage = portfolioPercentage
+    #################################################
 
 
 
@@ -873,10 +869,19 @@ class TradeRepublicPerformance:
 
 
     #################### GRAPHIQUES ####################
-    def PlotlyInteractive(self) -> None:
+    def PlotlyInteractive(self, nomDossier: str, nomFichier: str) -> None:
         """
         Crée un graphique interactif utilisant Plotly pour visualiser différents aspects de l'évolution du portefeuille en l'enregistrant dans un fichier html.
+
+        Args:
+            nomDossier (str): Chemin vers le dossier où sauvegarder le fichier de sortie.
+            nomFichier (str): Nom du fichier de sortie (doit avoir une extension .html).
         """
+        assert isinstance(nomDossier, str), "nomDossier doit être une chaîne de caractères"
+        assert os.path.exists(nomDossier), f"Le chemin '{nomDossier}' n'existe pas"
+
+        assert isinstance(nomFichier, str), f"nomFichier doit être une chaîne de caractères: ({nomFichier})"
+        assert nomFichier.endswith('.html'), f"Le fichier {nomFichier} n'a pas l'extension .html."
 
         portefeuillesGraphiques = []
 
@@ -889,7 +894,7 @@ class TradeRepublicPerformance:
         portefeuillesGraphiques.append(self.GraphiqueSunburst(self.prixBrutTickers))
 
         # Sauvegarde des graphiques dans un fichier HTML
-        self.SaveInFile(portefeuillesGraphiques, self.cheminFichierSauvegarder)
+        self.SaveInFile(portefeuillesGraphiques, (nomDossier + nomFichier))
 
 
     ########## Graphique en Histogramme ##########
@@ -1749,10 +1754,7 @@ class TradeRepublicPerformance:
         assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
             f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson).__name__}."
         
-        dataFrame = copy.deepcopy(self.prixBrutPortefeuille)
-
-        assert pd.api.types.is_datetime64_any_dtype(dataFrame.index), "L'index du DataFrame doit être de type datetime."
-        assert dataFrame.shape[1] == 1, "Le DataFrame doit contenir exactement une colonne avec les montants."
+        dataFrame = copy.deepcopy(self.prixBrutPortefeuille["Mon Portefeuille"])
 
         # Convertir l'index en dates au format string et les valeurs en dictionnaire
         dictData = dataFrame.reset_index()
