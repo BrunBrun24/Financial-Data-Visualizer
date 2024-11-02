@@ -886,9 +886,10 @@ class TradeRepublicPerformance:
         portefeuillesGraphiques = []
 
         # Ajout des graphiques
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.pourcentagePortefeuille, "Progression en pourcentage de chaque portefeuille"))
+        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.pourcentagePortefeuille, "Progression en pourcentage de chaque portefeuille", "%"))
         portefeuillesGraphiques.append(self.GraphiqueHeatmapPourcentageParMois(self.pourcentageMoisPortefeuille))
-        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.pourcentageTickers, "Progression en pourcentage de chaque ticker"))
+        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.pourcentageTickers, "Progression en pourcentage pour chaque ticker", "%"))
+        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.prixNetTickers, "Progression en euro pour chaque ticker", "€"))
         portefeuillesGraphiques.append(self.GraphiqueDividendesParAction(self.dividendesTickers))
         portefeuillesGraphiques.append(self.GraphiqueTreemapPortefeuille(self.prixBrutTickers))
         portefeuillesGraphiques.append(self.GraphiqueSunburst(self.prixBrutTickers))
@@ -1245,7 +1246,7 @@ class TradeRepublicPerformance:
 
     ########## Graphique Linéaire ##########
     @staticmethod
-    def GraphiqueLineairePortefeuilles(df: pd.DataFrame, title="") -> go.Figure:
+    def GraphiqueLineairePortefeuilles(df: pd.DataFrame, title="", suffixe: str="") -> go.Figure:
         """
         Génère un graphique linéaire interactif avec Plotly, basé sur les données contenues dans un DataFrame.
         Pour chaque colonne de `df`, une courbe distincte est tracée, permettant de visualiser l'évolution des
@@ -1255,12 +1256,14 @@ class TradeRepublicPerformance:
         Args:
             df (pd.DataFrame): DataFrame contenant les données à tracer. Les colonnes représentent différentes séries de données.
             title (str): Titre du graphique.
+            suffixe (str): Suffixe à ajouté sur l'axe des ordonnées.
 
         Returns:
             go.Figure: Le graphique Plotly
         """
         assert isinstance(df, pd.DataFrame), f"df doit être un DataFrame: ({type(df).__name__})"
         assert isinstance(title, str), f"title doit être une chaîne de caractères: ({type(title).__name__})"
+        assert isinstance(suffixe, str), f"devise doit être une chaîne de caractères: ({type(suffixe).__name__})"
 
         fig = go.Figure()
         colors = [
@@ -1277,7 +1280,8 @@ class TradeRepublicPerformance:
                 y=df[column],
                 mode='lines',
                 name=column,
-                line=dict(color=colors[colorIndex], width=3.5)
+                line=dict(color=colors[colorIndex], width=2.5),
+                hovertemplate='Date: %{x}<br>Pourcentage: %{y:.2f}' + suffixe + '<extra></extra>'
             ))
 
         fig.update_layout(
@@ -1291,7 +1295,7 @@ class TradeRepublicPerformance:
             yaxis=dict(
                 title='Valeur en %',
                 titlefont=dict(size=14, color='white'),
-                ticksuffix="%",
+                ticksuffix=suffixe,
                 tickfont=dict(color='white'),
                 gridcolor='rgba(255, 255, 255, 0.2)'
             ),
@@ -1310,7 +1314,7 @@ class TradeRepublicPerformance:
         return fig
     
     @staticmethod
-    def GraphiqueLineaireTickers(dataDict: dict, title="") -> go.Figure:
+    def GraphiqueLineaireTickers(dataDict: dict, title="", suffixe: str="") -> go.Figure:
         """
         Génère un graphique linéaire interactif avec Plotly, permettant de visualiser l'évolution des
         données pour différents portefeuilles et tickers. Chaque portefeuille est représenté par un
@@ -1322,6 +1326,7 @@ class TradeRepublicPerformance:
                             et chaque DataFrame contient les données à tracer, avec les dates en index et
                             les tickers en colonnes.
             title (str): Titre du graphique.
+            suffixe (str): Suffixe à ajouté sur l'axe des ordonnées.
 
         Returns:
             go.Figure: Le graphique Plotly avec un menu déroulant pour la sélection des portefeuilles.
@@ -1329,6 +1334,7 @@ class TradeRepublicPerformance:
         assert isinstance(dataDict, dict), f"dataDict doit être un dictionnaire: ({type(dataDict).__name__})"
         assert all(isinstance(df, pd.DataFrame) for df in dataDict.values()), "Chaque valeur de dataDict doit être un DataFrame"
         assert isinstance(title, str), f"title doit être une chaîne de caractères: ({type(title).__name__})"
+        assert isinstance(suffixe, str), f"devise doit être une chaîne de caractères: ({type(suffixe).__name__})"
 
         fig = go.Figure()
         colors = [
@@ -1353,7 +1359,8 @@ class TradeRepublicPerformance:
                     y=dfFiltré[column],
                     mode='lines',
                     name=f"{column}",
-                    line=dict(color=colors[colorIndex], width=3.5),
+                    line=dict(color=colors[colorIndex], width=1.5),
+                    hovertemplate='Date: %{x}<br>Pourcentage: %{y:.2f}' + suffixe + '<extra></extra>',
                     visible=(portfolioIndex == 0)  # Visible uniquement pour le premier portefeuille
                 ))
                 visibility.append(True)  # Ajouter True pour la trace actuelle
@@ -1378,18 +1385,14 @@ class TradeRepublicPerformance:
 
         # Configuration du layout et des menus déroulants
         fig.update_layout(
-            title=title,
-            updatemenus=[dict(
-                active=0,
-                buttons=dropdownButtons,
-                direction="down",
-                pad={"r": 10, "t": 10},
-                showactive=True,
-                x=0.26,
-                xanchor="left",
-                y=1.1,
-                yanchor="top"
-            )],
+            title=title + f" - {next(iter(dataDict))}",
+            updatemenus=[{
+                "buttons": dropdownButtons,
+                "direction": "down",
+                "showactive": True,
+                "xanchor": "center",
+                "yanchor": "top"
+            }],
             xaxis=dict(
                 titlefont=dict(size=14, color='white'),
                 tickfont=dict(color='white'),
@@ -1397,7 +1400,7 @@ class TradeRepublicPerformance:
             ),
             yaxis=dict(
                 titlefont=dict(size=14, color='white'),
-                ticksuffix="%",
+                ticksuffix=suffixe,
                 tickfont=dict(color='white'),
                 gridcolor='rgba(255, 255, 255, 0.2)'
             ),
