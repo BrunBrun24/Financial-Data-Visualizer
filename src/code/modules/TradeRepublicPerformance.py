@@ -34,6 +34,12 @@ class TradeRepublicPerformance:
 
         self.fichierJson = fichierJson
 
+        self.datesAchats = self.RecuperationTickerBuySell("achats")
+        self.datesVentes = self.RecuperationTickerBuySell("ventes")
+        self.argentInvesti = self.ArgentInvestiAll(self.datesAchats, self.datesVentes)
+        self.startDate = pd.to_datetime(min(list(set(date for ele in self.datesAchats.values() for date in ele.keys()))))
+        self.endDate = datetime.today()
+
         self.pourcentageTickers = {}
         self.prixNetTickers = {}
         self.prixBrutTickers = {}
@@ -52,11 +58,10 @@ class TradeRepublicPerformance:
     def SetPortfolioPercentage(self, portfolioPercentage: list):
         assert isinstance(portfolioPercentage, list), "portfolioPercentage doit être une liste de portefeuilles."
         for portefeuille in portfolioPercentage:
-            assert isinstance(portefeuille, list) and len(portefeuille) == 3, \
-                "Chaque portefeuille doit être une liste contenant un dictionnaire, un montant, et une chaîne de caractère."
+            assert isinstance(portefeuille, list) and len(portefeuille) == 2, \
+                "Chaque portefeuille doit être une liste contenant un dictionnaire et une chaîne de caractère."
             assert isinstance(portefeuille[0], dict), "Le premier élément du portefeuille doit être un dictionnaire des actions avec leurs pourcentages."
-            assert isinstance(portefeuille[1], (int, float)), "Le deuxième élément du portefeuille doit être un montant (int ou float)."
-            assert isinstance(portefeuille[2], str), "Le troisième élément du portefeuille doit être une chaîne de caractères représentant le nom du portefeuille."
+            assert isinstance(portefeuille[1], str), "Le deuxième élément du portefeuille doit être une chaîne de caractères représentant le nom du portefeuille."
             for ticker, pourcentage in portefeuille[0].items():
                 assert isinstance(ticker, str), f"Chaque clé du dictionnaire (ticker) doit être une chaîne de caractères, mais '{ticker}' ne l'est pas."
                 assert isinstance(pourcentage, (int, float)), f"Chaque valeur du dictionnaire (pourcentage) doit être un nombre (int ou float), mais '{pourcentage}' ne l'est pas."
@@ -67,22 +72,21 @@ class TradeRepublicPerformance:
 
 
     #################### TÉLÉCHARGEMENT DES DONNÉES BOURSIÈRES ####################
-    def DownloadTickersPrice(self, tickers: list, startDate: str|datetime, endDate: str|datetime) -> pd.DataFrame:
+    def DownloadTickersPrice(self, tickers: list) -> pd.DataFrame:
         """
         Télécharge les prix de clôture des actions spécifiées sur une période donnée.
 
         Args:
             tickers (list): Liste des symboles boursiers à télécharger.
-            startDate (str | datetime): Date de début du téléchargement au format 'YYYY-MM-DD'.
-            endDate (str | datetime): Date de fin du téléchargement au format 'YYYY-MM-DD' ou un objet datetime.
 
         Returns:
             pd.DataFrame: Un DataFrame contenant les prix de clôture des actions spécifiées,
             avec les dates manquantes complétées et les prix éventuellement convertis en EUR.
         """
         assert isinstance(tickers, list) and all(isinstance(ticker, str) for ticker in tickers), "tickers doit être une liste de chaînes de caractères"
-        assert isinstance(startDate, (str, datetime)), "startDate doit être une chaîne de caractères ou un objet datetime"
-        assert isinstance(endDate, (str, datetime)), "endDate doit être une chaîne de caractères ou un objet datetime"
+
+        startDate = self.startDate
+        endDate = self.endDate
 
         # Téléchargement des données pour plusieurs tickers ou un seul
         if len(tickers) > 1:
@@ -174,24 +178,20 @@ class TradeRepublicPerformance:
 
         return pourcentageTickers
 
-    @staticmethod
-    def EvolutionPourcentagePortefeuille(prixPortefeuilleNet: pd.DataFrame, argentInvestis: int|float) -> pd.DataFrame:
+    def EvolutionPourcentagePortefeuille(self, prixPortefeuilleNet: pd.DataFrame) -> pd.DataFrame:
         """
         Calcule l'évolution en pourcentage des gains/pertes par rapport au montant total investi.
 
         Args:
             prixPortefeuilleNet (pd.DataFrame): DataFrame contenant l'évolution du prix net du portefeuille.
-            argentInvestis (int | float): Mntant total investi initialement.
 
         Returns:
             pd.DataFrame: DataFrame avec l'évolution en pourcentage des gains/pertes.
         """
         assert isinstance(prixPortefeuilleNet, pd.DataFrame), f"prixPortefeuilleNet doit être un int ou float: ({type(prixPortefeuilleNet).__name__})"
-        assert isinstance(argentInvestis, (int, float)), f"argentInvestis doit être un int ou float: ({type(argentInvestis).__name__})"
-        assert argentInvestis != 0, "argentInvestis ne doit pas être égal à zéro pour éviter la division par zéro."
 
         # Calculer l'évolution en pourcentage pour chaque colonne
-        dfPourcentage = round((prixPortefeuilleNet / argentInvestis) * 100, 2)
+        dfPourcentage = round((prixPortefeuilleNet / self.argentInvesti) * 100, 2)
 
         return dfPourcentage
 
@@ -274,7 +274,7 @@ class TradeRepublicPerformance:
     @staticmethod
     def EvolutionPrixTickersPortefeuille(pourcentageTickers: pd.DataFrame, ArgentsInvestisTickers: pd.DataFrame, datesVentes: dict) -> pd.DataFrame:
         """
-        Calcule l'évolution du prix des actions par rapport aux prix d'achat en utilisant les pourcentages fournis.
+        Calcule l'évolution du prix des actions par rapport aux prix d'achats et de ventes en utilisant les pourcentages fournis.
 
         Args:
             pourcentageTickers (pd.DataFrame): DataFrame contenant les évolutions en pourcentage des prix des tickers. Les colonnes représentent les tickers et les index représentent les dates.
@@ -316,7 +316,7 @@ class TradeRepublicPerformance:
         for ticker, operations in datesVentes.items():
             for date, prix in operations.items():
                 dateMoinsUnJour = (pd.to_datetime(date) - timedelta(days=1)).strftime('%Y-%m-%d')
-                plusValueRealisee.loc[dateMoinsUnJour:, ticker] = evolutionPrixTickersNet.at[dateMoinsUnJour, ticker]
+                plusValueRealisee.loc[date:, ticker] = evolutionPrixTickersNet.at[dateMoinsUnJour, ticker]
 
         # Somme globale des évolutions des prix
         evolutionGlobalPrixNet = pd.DataFrame(index=evolutionPrixTickersNet.index)
@@ -418,24 +418,20 @@ class TradeRepublicPerformance:
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""
 
         nomPortefeuille = "Mon Portefeuille"
-        datesAchats = self.RecuperationTickerBuySell("achats")
-        datesVentes = self.RecuperationTickerBuySell("ventes")
 
-        prixFIFO, prixTickers, ArgentsInvestisTickers = self.CalculerPrixAchatFIFO_MonPortefeuille(datesAchats, datesVentes)
+        prixFIFO, prixTickers, ArgentsInvestisTickers = self.CalculerPrixAchatFIFO_MonPortefeuille()
         evolutionPourcentageTickers = self.EvolutionPourcentageTickers(prixFIFO, prixTickers)
-        evolutionPrixBrutTickers, evolutionPrixBrutPortefeuille, evolutionPrixNetTickers, evolutionPrixNetPortefeuille = self.EvolutionPrixTickersPortefeuille(evolutionPourcentageTickers, ArgentsInvestisTickers, datesVentes)
+        evolutionPrixBrutTickers, evolutionPrixBrutPortefeuille, evolutionPrixNetTickers, evolutionPrixNetPortefeuille = self.EvolutionPrixTickersPortefeuille(evolutionPourcentageTickers, ArgentsInvestisTickers, self.datesVentes)
 
         # On stock les DataFrames
-        self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille, self.ArgentInvestiAll(datesAchats, datesVentes))
+        self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille)
         self.prixNetPortefeuille[nomPortefeuille] = evolutionPrixNetPortefeuille
         self.prixBrutPortefeuille[nomPortefeuille] = evolutionPrixBrutPortefeuille
         self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
         self.prixNetTickers[nomPortefeuille] = evolutionPrixNetTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionPrixBrutTickers
         self.dividendesTickers[nomPortefeuille] = self.EvolutionDividendesPortefeuille(evolutionPrixBrutTickers, prixTickers)
-        self.pourcentageMoisPortefeuille[nomPortefeuille] = self.EvolutionPourcentageMois(evolutionPrixBrutPortefeuille, self.SommeInvestissementParDate(datesAchats), self.SommeInvestissementParDate(datesVentes))
-
-        return min(list(set(date for ele in datesAchats.values() for date in ele.keys())))
+        self.pourcentageMoisPortefeuille[nomPortefeuille] = self.EvolutionPourcentageMois(evolutionPrixBrutPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
 
     def RecuperationTickerBuySell(self, objectif: str) -> dict:
         """
@@ -474,13 +470,9 @@ class TradeRepublicPerformance:
 
         return result
 
-    def CalculerPrixAchatFIFO_MonPortefeuille(self, datesAchats: dict, datesVentes: dict) -> tuple:
+    def CalculerPrixAchatFIFO_MonPortefeuille(self) -> tuple:
         """
         Calcule les prix d'achat FIFO (First In First Out) pour les actions basées sur les dates d'achat et les prix de clôture.
-
-        Args:
-            datesAchats (dict): Dictionnaire contenant les dates d'achat pour chaque ticker, où chaque clé est un ticker et la valeur est un dictionnaire avec des dates comme clés et montants d'achat comme valeurs.
-            datesVentes (dict): Dictionnaire contenant les dates de vente et les prix associés pour chaque ticker, où chaque clé est un ticker et la valeur est un dictionnaire avec les dates comme clés et les prix comme valeurs.
 
         Returns:
             tuple: Un tuple contenant trois DataFrames :
@@ -489,16 +481,9 @@ class TradeRepublicPerformance:
                 - ArgentsInvestisTickers : DataFrame des coûts totaux d'achat pour chaque ticker.
         """
 
-        assert isinstance(datesAchats, dict), f"datesAchats doit être un dictionnaire: ({type(datesAchats).__name__})"
-        assert isinstance(datesVentes, dict), f"datesVentes doit être un dictionnaire: ({type(datesVentes).__name__})"
-
-        tickerAll = list(datesAchats.keys())
-        # Récupérer toutes les dates d'achat et les trier
-        startDate = min(list(set(date for ele in datesAchats.values() for date in ele.keys())))
-        endDate = datetime.now()
-
+        tickerAll = list(self.datesAchats.keys())
         # Télécharger les prix de clôture pour chaque ticker
-        prixTickers = self.DownloadTickersPrice(tickerAll, startDate, endDate)
+        prixTickers = self.DownloadTickersPrice(tickerAll)
 
         # Créer une DataFrame pour stocker les prix d'achat FIFO
         prixFIFO = pd.DataFrame(index=prixTickers.index, columns=tickerAll)
@@ -506,8 +491,8 @@ class TradeRepublicPerformance:
 
         # Calculer les prix d'achat FIFO pour chaque ticker
         for ticker in tickerAll:
-            datesInvestissementsPrix = datesAchats[ticker]
-            datesVentesPrix = datesVentes[ticker]
+            datesInvestissementsPrix = self.datesAchats[ticker]
+            datesVentesPrix = self.datesVentes[ticker]
 
             datesInvestissements = list(datesInvestissementsPrix.keys())
             datesVentesList = list(datesVentesPrix.keys())
@@ -589,35 +574,29 @@ class TradeRepublicPerformance:
     def ReplicationDeMonPortefeuille(self) -> None:
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""
 
-        datesAchats = self.RecuperationTickerBuySell("achats")
-        datesVentes = self.RecuperationTickerBuySell("ventes")
-        argentInvestiAll = self.ArgentInvestiAll(datesAchats, datesVentes)
-
-        startDate = min(list(set(date for ele in datesAchats.values() for date in ele.keys())))
-        endDate = datetime.today()
         tickersAll = [ticker for portfolio in self.portfolioPercentage for ticker in portfolio[0].keys()]
-        prixTickers = self.DownloadTickersPrice(tickersAll, startDate, endDate)
+        prixTickers = self.DownloadTickersPrice(tickersAll)
 
         for portfolio in self.portfolioPercentage:
             nomPortefeuille = portfolio[-1] + " Réplication"
             tickers = [ticker for ticker in portfolio[0].keys()]
             prixTickersFiltree = prixTickers.loc[:, prixTickers.columns.intersection(tickers)]
 
-            prixFIFO, ArgentsInvestisTickers = self.CalculerPrixAchatFIFO_ReplicationDeMonPortefeuille(tickers, prixTickersFiltree, portfolio, datesAchats, datesVentes)
+            prixFIFO, ArgentsInvestisTickers = self.CalculerPrixAchatFIFO_ReplicationDeMonPortefeuille(tickers, prixTickersFiltree, portfolio)
             evolutionPourcentageTickers = self.EvolutionPourcentageTickers(prixFIFO, prixTickersFiltree)
             evolutionPrixBrutTickers, evolutionPrixBrutPortefeuille, evolutionPrixNetTickers, evolutionPrixNetPortefeuille = self.EvolutionPrixTickersPortefeuille(evolutionPourcentageTickers, ArgentsInvestisTickers, {})
 
             # On stock les DataFrames
-            self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille, argentInvestiAll)
+            self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille)
             self.prixNetPortefeuille[nomPortefeuille] = evolutionPrixNetPortefeuille
             self.prixBrutPortefeuille[nomPortefeuille] = evolutionPrixBrutPortefeuille
             self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
             self.prixNetTickers[nomPortefeuille] = evolutionPrixNetTickers
             self.prixBrutTickers[nomPortefeuille] = evolutionPrixBrutTickers
             self.dividendesTickers[nomPortefeuille] = self.EvolutionDividendesPortefeuille(evolutionPrixBrutTickers, prixTickersFiltree)
-            self.pourcentageMoisPortefeuille[nomPortefeuille] = self.EvolutionPourcentageMois(evolutionPrixBrutPortefeuille, self.SommeInvestissementParDate(datesAchats), self.SommeInvestissementParDate(datesVentes))
+            self.pourcentageMoisPortefeuille[nomPortefeuille] = self.EvolutionPourcentageMois(evolutionPrixBrutPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
 
-    def CalculerPrixAchatFIFO_ReplicationDeMonPortefeuille(self, tickers: list, prixTickers: pd.DataFrame, portefeuille: list, datesAchats: dict, datesVentes: dict) -> tuple:
+    def CalculerPrixAchatFIFO_ReplicationDeMonPortefeuille(self, tickers: list, prixTickers: pd.DataFrame, portefeuille: list) -> tuple:
         """
         Calcule les prix d'achat FIFO (First In First Out) pour les actions basées sur les dates d'achat et les prix de clôture.
 
@@ -625,10 +604,8 @@ class TradeRepublicPerformance:
             tickers (list): Liste contenant le nom des tickers au format string.
             prixTickers (pd.DataFrame): DataFrame contenant les prix actuels des tickers.
             portefeuille (list): Liste contenant deux éléments:
-                - un dictionnaire avec les allocations pour chaque ticker,
-                - un float ou int représentant le montant à investir.
-            datesAchats (dict): Dictionnaire contenant les dates d'achat pour chaque ticker, où chaque clé est un ticker et la valeur est un dictionnaire avec des dates comme clés et montants d'achat comme valeurs.
-            datesVentes (dict): Dictionnaire contenant les dates de vente et les prix associés pour chaque ticker, où chaque clé est un ticker et la valeur est un dictionnaire avec les dates comme clés et les prix comme valeurs.
+                - un dictionnaire avec les allocations pour chaque ticker
+                - une chaîne de caractère pour le nom du portefeuille
 
         Returns:
             tuple: Un tuple contenant trois DataFrames :
@@ -639,17 +616,14 @@ class TradeRepublicPerformance:
         assert all(isinstance(ticker, str) for ticker in tickers), "Chaque élément dans tickers doit être une chaîne de caractères."
 
         # Vérification de portefeuille
-        assert isinstance(portefeuille, list) and len(portefeuille) == 3, "portefeuille doit être une liste contenant un dictionnaire, un montant et une chaîne de caractère."
+        assert isinstance(portefeuille, list) and len(portefeuille) == 2, "portefeuille doit être une liste contenant un dictionnaire et une chaîne de caractère."
         assert isinstance(portefeuille[0], dict), "Le premier élément du portefeuille doit être un dictionnaire."
-        assert isinstance(portefeuille[1], (int, float)), "Le deuxième élément du portefeuille doit être un montant (int ou float)."
-        assert isinstance(portefeuille[2], str), "Le troisième élément du portefeuille doit être une chaîne de caractère (str)."
+        assert isinstance(portefeuille[1], str), "Le deuxième élément du portefeuille doit être une chaîne de caractère (str)."
 
         assert isinstance(prixTickers, pd.DataFrame), f"prixTickers doit être un DataFrame: ({type(prixTickers).__name__})"
-        assert isinstance(datesAchats, dict), f"datesAchats doit être un dictionnaire: ({type(datesAchats).__name__})"
-        assert isinstance(datesVentes, dict), f"datesVentes doit être un dictionnaire: ({type(datesVentes).__name__})"
 
-        datesInvestissementsPrix = self.SommeInvestissementParDate(datesAchats)
-        datesVentesPrix = self.SommeInvestissementParDate(datesVentes)
+        datesInvestissementsPrix = self.SommeInvestissementParDate(self.datesAchats)
+        datesVentesPrix = self.SommeInvestissementParDate(self.datesVentes)
         datesInvestissementsPrix = dict(sorted(datesInvestissementsPrix.items()))
         datesVentesPrix = dict(sorted(datesVentesPrix.items()))
 
@@ -727,17 +701,13 @@ class TradeRepublicPerformance:
         """
 
         tickersAll = [ticker for portfolio in self.portfolioPercentage for ticker in portfolio[0].keys()]
-        startDate = self.pourcentagePortefeuille.index[0] # Ayant déjà calculé mon portefeuille
-        endDate = datetime.today()
-
-        prixTickers = self.DownloadTickersPrice(tickersAll, startDate, endDate)
-        datesInvestissements = self.DatesInvesissementDCA_DCV(startDate, endDate)
+        prixTickers = self.DownloadTickersPrice(tickersAll)
+        datesInvestissements = self.DatesInvesissementDCA_DCV()
 
         for portfolio in self.portfolioPercentage:
             nomPortefeuille = portfolio[-1] + " DCA"
             tickers = [ticker for ticker in portfolio[0].keys()]
             prixTickersFiltree = prixTickers.loc[:, prixTickers.columns.intersection(tickers)]
-            argentInvestiAll = portfolio[1] * len(datesInvestissements)
 
             prixFIFO, ArgentsInvestisTickers, datesInvestirPrix = self.CalculerPrixAchatFIFO_DCA(tickers, prixTickersFiltree, datesInvestissements, portfolio)
 
@@ -745,7 +715,7 @@ class TradeRepublicPerformance:
             evolutionPrixBrutTickers, evolutionPrixBrutPortefeuille, evolutionPrixNetTickers, evolutionPrixNetPortefeuille = self.EvolutionPrixTickersPortefeuille(evolutionPourcentageTickers, ArgentsInvestisTickers, {})
 
             # On stock les DataFrames
-            self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille, argentInvestiAll)
+            self.pourcentagePortefeuille[nomPortefeuille] = self.EvolutionPourcentagePortefeuille(evolutionPrixNetPortefeuille)
             self.prixNetPortefeuille[nomPortefeuille] = evolutionPrixNetPortefeuille
             self.prixBrutPortefeuille[nomPortefeuille] = evolutionPrixBrutPortefeuille
             self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
@@ -754,8 +724,7 @@ class TradeRepublicPerformance:
             self.dividendesTickers[nomPortefeuille] = self.EvolutionDividendesPortefeuille(evolutionPrixBrutTickers, prixTickersFiltree)
             self.pourcentageMoisPortefeuille[nomPortefeuille] = self.EvolutionPourcentageMois(evolutionPrixBrutPortefeuille, datesInvestirPrix, {})
 
-    @staticmethod
-    def DatesInvesissementDCA_DCV(startDate: str|datetime, endDate: str|datetime) -> list:
+    def DatesInvesissementDCA_DCV(self) -> list:
         """
         Extrait les dates de début de chaque mois dans la plage donnée entre startDate et endDate.
 
@@ -766,12 +735,10 @@ class TradeRepublicPerformance:
         Returns:
             list: Liste des dates de début de chaque mois sous forme de chaînes formatées 'YYYY-MM-DD'.
         """
-        assert isinstance(startDate, (str, datetime)), "startDate doit être une chaîne de caractères ou un datetime"
-        assert isinstance(endDate, (str, datetime)), "endDate doit être une chaîne de caractères ou un datetime"
 
         # Conversion en format datetime si nécessaire
-        startDate = pd.to_datetime(startDate)
-        endDate = pd.to_datetime(endDate)
+        startDate = pd.to_datetime(self.startDate)
+        endDate = pd.to_datetime(self.endDate)
 
         # Initialisation de la liste pour stocker les dates de début de chaque mois
         debutMois = []
@@ -786,10 +753,9 @@ class TradeRepublicPerformance:
             next_year = currentDate.year + (currentDate.month // 12)
             currentDate = currentDate.replace(month=next_month, year=next_year, day=1)
 
-        return debutMois
+        return sorted(debutMois)
 
-    @staticmethod
-    def CalculerPrixAchatFIFO_DCA(tickers: list, tickerPriceDf: pd.DataFrame, datesInvestir: list, portefeuille: list) -> tuple:
+    def CalculerPrixAchatFIFO_DCA(self, tickers: list, tickerPriceDf: pd.DataFrame, datesInvestir: list, portefeuille: list) -> tuple:
         """
         Calcule les prix d'achat FIFO (First In First Out) pour les actions basées sur les dates d'achat et les prix de clôture, d'après la méthode d'investissement DCA.
 
@@ -799,7 +765,7 @@ class TradeRepublicPerformance:
             datesInvestir (list): Liste contenant des dates au format 'YYYY-MM-DD'.
             portefeuille (list): Liste contenant deux éléments:
                 - un dictionnaire avec les allocations pour chaque ticker,
-                - un float ou int représentant le montant à investir.
+                - une chaîne de caractère pour le nom du portefeuille
 
         Returns:
             tuple: Un tuple contenant deux DataFrames:
@@ -826,13 +792,12 @@ class TradeRepublicPerformance:
         assert all(date in tickerPriceDf.index for date in datesInvestir), "Chaque date dans datesInvestir doit être présente dans les index de tickerPriceDf."
 
         # Vérification de portefeuille
-        assert isinstance(portefeuille, list) and len(portefeuille) == 3, "portefeuille doit être une liste contenant un dictionnaire, un montant et une chaîne de caractère."
+        assert isinstance(portefeuille, list) and len(portefeuille) == 2, "portefeuille doit être une liste contenant un dictionnaire et une chaîne de caractère."
         assert isinstance(portefeuille[0], dict), "Le premier élément du portefeuille doit être un dictionnaire."
-        assert isinstance(portefeuille[1], (int, float)), "Le deuxième élément du portefeuille doit être un montant (int ou float)."
-        assert isinstance(portefeuille[2], str), "Le troisième élément du portefeuille doit être une chaîne de caractère (str)."
+        assert isinstance(portefeuille[1], str), "Le deuxième élément du portefeuille doit être une chaîne de caractère (str)."
 
-        # On trie les dates de la plus ancienne vers la plus récente
-        datesInvestir.sort()
+        nombreMois = (self.endDate.year - self.startDate.year) * 12 + (self.endDate.month - self.startDate.month)
+        argentMoisInvestir = self.argentInvesti / nombreMois
 
         # Créer une DataFrame pour stocker les prix d'achat FIFO
         prixFIFO = pd.DataFrame(index=tickerPriceDf.index, columns=tickers)
@@ -842,7 +807,7 @@ class TradeRepublicPerformance:
         for ticker in tickers:
             totalQuantite = 0
             totalCout = 0
-            ajouterPrixArgentTicker = (portefeuille[1] * portefeuille[0][ticker] / 100)
+            ajouterPrixArgentTicker = (argentMoisInvestir * portefeuille[0][ticker] / 100)
 
             for date in datesInvestir:
                 prixAction = tickerPriceDf.at[date, ticker]
@@ -860,7 +825,7 @@ class TradeRepublicPerformance:
                 ArgentsInvestisTickers.loc[date:, ticker] = totalCout
 
         # Avec un investissement en DCA on investit la même somme tous les mois
-        datesInvestirPrix = {date: portefeuille[1] for date in datesInvestir}
+        datesInvestirPrix = {date: argentMoisInvestir for date in datesInvestir}
 
         return prixFIFO, ArgentsInvestisTickers, datesInvestirPrix
     #########################
