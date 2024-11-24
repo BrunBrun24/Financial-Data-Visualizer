@@ -20,27 +20,6 @@ class TradeRepublicFileExcelJson:
     Attributs :
         - directoryData : Chemin du répertoire de données contenant les fichiers PDF.
         - tickerMapping : Dictionnaire pour mapper les tickers avec des informations supplémentaires.
-
-    Méthodes :
-        - __init__(self, directoryData: str, tickerMapping: dict) : Initialise la classe avec un répertoire de données.
-        - DownloadDataAndCreateFileExcel(self, cheminEnregistrementFichier: str, ouvrir=False) : Crée un fichier Excel récapitulatif des gains.
-        - SaveDataFrameAsJson(self, dataFrame: pd.DataFrame, pathJson: str) : Enregistre un DataFrame sous forme de fichier JSON.
-        - SaveTransactionsToJson(self, dataFrames: list, pathJson: str) : Enregistre les transactions d'achats et de ventes dans un fichier JSON.
-        - ConvertirColonnesDate(dataFrame: pd.DataFrame) -> pd.DataFrame : Convertit les colonnes contenant "date" en dates formatées.
-        - PutDataFrameSheetExcel(workbook: Workbook, nomFeuille: str, df: pd.DataFrame, colonnesEuros=[], colonnesPourcentages=[], colonnesDates=[], appliquerTableau=False) -> None : Formate les colonnes du DataFrame dans le classeur Excel.
-        - GetPdfFilesFromFolder(folderPath: str) -> list : Retourne une liste de tous les fichiers PDF dans le dossier spécifié.
-        - RenameAndMoveDepotRetraitArgentInteret(self, filePath: str, detailsFolder: str) -> None : Renomme et déplace un fichier PDF en fonction des informations extraites.
-        - RenameAndMoveDividendes(self, filePath, detailsFolder) : Renomme et déplace un fichier PDF en fonction des informations extraites.
-        - RenameAndMoveOrdresAchats(self, filePath: str, detailsFolder: str) -> None : Renomme et déplace un fichier PDF basé sur les informations extraites.
-        - RenameAndMoveOrdresVentes(self, filePath: str) : Renomme et déplace un fichier PDF basé sur les informations extraites.
-        - DataDepotArgent(pdfFiles: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - DataDividendes(pdfFiles: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - DataInteret(pdf: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - DataOrdresAchats(pdfFiles: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - DataOrdresVentes(pdfFiles: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - DataRetraitArgent(pdfFiles: list, chemin: str) -> pd.DataFrame : Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        - ProcessPdf(nameDirectory: str, cheminDossierRenommer: str, nameFunction) -> None : Parcourt les fichiers PDF dans un répertoire et les traite.
-        - ExtractInformationPdf(filePath: str) -> str : Extrait le texte de chaque page d'un fichier PDF.
     """
 
     def __init__(self, directoryData: str, tickerMapping: dict) -> None:
@@ -57,11 +36,13 @@ class TradeRepublicFileExcelJson:
         assert isinstance(directoryData, str), f"directoryData doit être une chaîne, mais c'est {type(directoryData).__name__}."
         assert os.path.exists(directoryData), f"Le fichier ou le dossier '{directoryData}' n'existe pas."
         assert os.path.isdir(directoryData), f"'{directoryData}' n'est pas un dossier."
-        
+
         self.directoryData = directoryData
         self.tickerMapping = tickerMapping
-        
 
+
+
+    #################### SAVE FILE ####################
     def DownloadDataAndCreateFileExcel(self, cheminEnregistrementFichier: str, ouvrir=False) -> None:
         """
         Crée un récapitulatif des gains en générant un classeur Excel avec plusieurs feuilles pour différents types de données financières.
@@ -79,12 +60,9 @@ class TradeRepublicFileExcelJson:
         assert isinstance(ouvrir, bool), \
             f"ouvrir doit être un booléen, mais c'est {type(ouvrir).__name__}."
 
-        dossier = self.directoryData
         buySell = []
-
         # Créez un classeur Excel
         workbook = Workbook()
-        
         # Supprime la feuille par défaut "Sheet"
         sheetToDelete = workbook["Sheet"]
         workbook.remove(sheetToDelete)
@@ -101,46 +79,42 @@ class TradeRepublicFileExcelJson:
 
         # Boucle pour traiter chaque type de donnée et créer les feuilles Excel correspondantes
         for operation in operations:
-            nomFichier = dossier + operation["nomFichier"]
+            nomFichier = self.directoryData + operation["nomFichier"]
             filesPdf = self.GetPdfFilesFromFolder(nomFichier)
 
             dataFilePdf, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau = operation["data"](filesPdf, nomFichier)
             dataFilePdf.columns = [col.capitalize() for col in dataFilePdf.columns]
             self.PutDataFrameSheetExcel(workbook=workbook, nomFeuille=nomFeuille, df=dataFilePdf, colonnesEuros=colonnesEuros, colonnesPourcentages=colonnesPourcentages, colonnesDates=colonnesDates, appliquerTableau=appliquerTableau)
 
-            
             dataFilePdfJson = self.ConvertirColonnesDate(dataFilePdf)
             self.SaveDataFrameAsJson(dataFilePdfJson, operation["fileJson"])
-            
+
             if operation["nomFichier"] in ["Ordres d'achats", "Ordres de ventes/FacturesVentes"]:
                 buySell.append(dataFilePdf)
-                
+
 
         self.SaveTransactionsToJson(buySell, "Bilan/Archives/Bourse/Transactions.json")
         # Enregistrez le fichier Excel
         workbook.save(cheminEnregistrementFichier)
-        
+
         if ouvrir:
             os.system(f'start excel "{cheminEnregistrementFichier}"')
 
-    def SaveDataFrameAsJson(self, dataFrame: pd.DataFrame, pathJson: str):
+    def SaveDataFrameAsJson(self, dataFrame: pd.DataFrame, pathJson: str) -> None:
         """
         Enregistre un DataFrame sous forme de fichier JSON et applique un mapping des tickers si une colonne 'ticker' existe.
 
         Args:
             dataFrame (pd.DataFrame): Le DataFrame à sauvegarder.
             pathJson (str): Le chemin où sauvegarder le fichier JSON.
-
-        Returns:
-            None
         """
         mappingTickers = self.tickerMapping
-        
+
         # Vérifications des types des arguments
         assert isinstance(dataFrame, pd.DataFrame), f"dataFrame doit être un pd.DataFrame, mais c'est {type(dataFrame).__name__}."
         assert isinstance(pathJson, str) and pathJson.endswith(".json"), \
             f"pathJson doit être une chaîne se terminant par '.json', mais c'est {type(pathJson).__name__}."
-        
+
         # Normalisation des clés du dictionnaire de mapping en minuscules
         mappingTickers = {key.lower(): value for key, value in mappingTickers.items()}
 
@@ -233,50 +207,54 @@ class TradeRepublicFileExcelJson:
             # Ajouter les achats au ticker
             for _, row in achatDf.iterrows():
                 transaction["achats"].append({
-                    "date": (datetime(1899, 12, 30) + pd.Timedelta(days=int(row["Date de valeur"]))).strftime("%Y-%m-%d"),
+                    "date": row["Date de valeur"],
                     "price": abs(row["Montant investi"])
                 })
 
             # Ajouter les ventes au ticker
             for _, row in venteDf.iterrows():
                 transaction["ventes"].append({
-                    "date": (datetime(1899, 12, 30) + pd.Timedelta(days=int(row["Date de valeur"]))).strftime("%Y-%m-%d"),
+                    "date": row["Date de valeur"],
                     "price": abs(row["Montant gagné"])
                 })
 
         # Sauvegarde du fichier JSON
         with open(pathJson, 'w', encoding='utf-8') as f:
             json.dump({"transactions": transactions}, f, ensure_ascii=False, indent=4)
+    ###################################################
 
+
+
+    #################### ANNEXES ####################
     @staticmethod
     def ConvertirColonnesDate(dataFrame: pd.DataFrame) -> pd.DataFrame:
         """
         Convertit toutes les colonnes du DataFrame contenant "date" dans leur nom en dates formatées (YYYY-MM-DD).
-        
+
         Args:
             dataFrame (pd.DataFrame): Le DataFrame contenant les données avec des colonnes à traiter.
-        
+
         Returns:
             pd.DataFrame: Un nouveau DataFrame avec les colonnes de date converties.
         """
         # Vérification du type du paramètre
         assert isinstance(dataFrame, pd.DataFrame), f"dataFrame doit être un DataFrame, mais c'est {type(dataFrame).__name__}."
-        
+
         df = dataFrame.copy()
-        
+
         # Parcours de toutes les colonnes pour détecter celles contenant 'date' (insensible à la casse)
         for col in df.columns:
             if 'date' in col.lower() and isinstance(df[col].iloc[-1], int):
                 # Conversion des valeurs de cette colonne en dates au format YYYY-MM-DD
                 df[col] = df[col].apply(lambda x: (datetime(1899, 12, 30) + pd.Timedelta(days=int(x))).strftime("%Y-%m-%d") if pd.notnull(x) else x)
-        
+
         return df
 
     @staticmethod
     def PutDataFrameSheetExcel(workbook: Workbook, nomFeuille: str, df: pd.DataFrame, colonnesEuros=[], colonnesPourcentages=[], colonnesDates=[], appliquerTableau=False) -> None:
         """
         Formate les colonnes du DataFrame dans le classeur Excel en fonction des listes de colonnes à formater et ajoute les données dans la feuille spécifiée.
-        
+
         Args:
             workbook (Workbook): Le classeur Excel où les données seront ajoutées.
             df (pd.DataFrame): Le DataFrame contenant les données à formater.
@@ -288,10 +266,10 @@ class TradeRepublicFileExcelJson:
         """
         # Crée une nouvelle feuille dans le classeur Excel avec le nom spécifié
         feuille = workbook.create_sheet(title=nomFeuille)
-        
+
         # Qui est la première colonne qui correspond aux dates de la plus récente à la plus ancienne
         df = df.sort_values(by=df.columns[0], ascending=False)
-        
+
         # Ajoute les données du DataFrame à la feuille
         for row in dataframe_to_rows(df, index=False, header=True):
             feuille.append(row)
@@ -342,7 +320,6 @@ class TradeRepublicFileExcelJson:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             feuille.column_dimensions[get_column_letter(column[0].column)].width = max_length + 3
 
-
     @staticmethod
     def GetPdfFilesFromFolder(folderPath: str) -> list:
         """
@@ -359,10 +336,13 @@ class TradeRepublicFileExcelJson:
 
         # Récupération de la liste des fichiers .pdf dans le dossier
         filePdf = [file for file in os.listdir(folderPath) if file.lower().endswith('.pdf') and os.path.isfile(os.path.join(folderPath, file))]
-        
+
         return filePdf
+    #################################################
 
 
+
+    #################### RENAME AND MOVE FILES ####################
     def RenameAndMoveDepotRetraitArgentInteret(self, filePath: str, detailsFolder: str) -> None:
         """
         Renomme et déplace un fichier PDF en fonction des informations extraites de son texte.
@@ -378,16 +358,16 @@ class TradeRepublicFileExcelJson:
         # Assertions pour vérifier les types des arguments
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
         assert isinstance(detailsFolder, str) and os.path.isdir(detailsFolder), f"Le dossier '{detailsFolder}' n'existe pas"
-        
+
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
-        
+
         # Assertions pour vérifier que le texte a été extrait correctement
         assert text is not None, "Le texte extrait du fichier PDF est None."
 
         # Extraire les informations nécessaires pour le renommage du fichier
         dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
-        
+
         if dateMatch:
             dateStr = dateMatch.group(1)
             # Convertir la chaîne en objet datetime
@@ -397,7 +377,7 @@ class TradeRepublicFileExcelJson:
 
             # Créer le nouveau nom de fichier
             newFileName = f"{nouvelleDateStr.replace('/', '-')}.pdf"
-            
+
             # Vérifier si le fichier existe déjà dans le dossier de destination
             counter = 0
             while os.path.exists(os.path.join(detailsFolder, newFileName)):
@@ -432,7 +412,7 @@ class TradeRepublicFileExcelJson:
         # Extraire les informations nécessaires pour le renommage du fichier
         dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
         dateMatch1 = re.search(r'DATE (\d{2}\.\d{2}\.\d{4})', text)
-        
+
         if dateMatch:
             dateStr = dateMatch.group(1)
             # Convertir la chaîne en objet datetime
@@ -453,7 +433,7 @@ class TradeRepublicFileExcelJson:
         pattern1 = r'POSITION QUANTITÉ TAUX MONTANT\n(.*?)\n'
         match = re.search(pattern, text, re.DOTALL)
         match1 = re.search(pattern1, text, re.DOTALL)
-        
+
         if match:
             nameTicker = match.group(1).strip()
             if re.search(re.escape(" Inc."), nameTicker):
@@ -473,7 +453,7 @@ class TradeRepublicFileExcelJson:
 
         # Créer le nouveau nom de fichier
         newFileName = f"{nameTicker}_{nouvelleDateStr.replace('/', '-')}.pdf"
-        
+
         # Vérifier si le fichier existe déjà dans le dossier de destination
         counter = 0
         while os.path.exists(os.path.join(detailsFolder, newFileName)):
@@ -501,10 +481,10 @@ class TradeRepublicFileExcelJson:
         # Assertions pour vérifier les types des entrées
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
         assert isinstance(detailsFolder, str) and os.path.isdir(detailsFolder), f"Le dossier '{detailsFolder}' n'existe pas"
-        
+
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
-        
+
         # Extraire la date du texte
         dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
         if dateMatch:
@@ -515,9 +495,9 @@ class TradeRepublicFileExcelJson:
             nouvelleDateStr = dateObj.strftime("%Y-%m-%d")
         else:
             raise ValueError(f"Date non trouvée dans le fichier {filePath}.")
-        
+
         # Extraire le nom du ticker
-        pattern = r'POSITION QUANTITÉ COURS MOYEN MONTANT\n(.*?)\n'
+        pattern = r'POSITION QUANTITÉ Cours moyen MONTANT\n(.*?)\n'
         match = re.search(pattern, text, re.DOTALL)
         if match:
             nameTicker = match.group(1).strip()
@@ -526,7 +506,7 @@ class TradeRepublicFileExcelJson:
                 nameTicker = nameTicker.replace(" Inc.", "")
         else:
             raise ValueError(f"Nom du ticker non trouvé dans le fichier {filePath}.")
-        
+
         # Créer le nouveau nom de fichier
         newFileName = f"{nameTicker}_{nouvelleDateStr}.pdf"
         try:
@@ -535,7 +515,7 @@ class TradeRepublicFileExcelJson:
         except Exception as e:
             print(f"Une erreur s'est produite lors du déplacement du fichier {filePath}: {e}")
 
-    def RenameAndMoveOrdresVentes(self, filePath: str):
+    def RenameAndMoveOrdresVentes(self, filePath: str, temp):
         """
         Renomme et déplace un fichier PDF basé sur les informations extraites du texte du fichier.
         Le nouveau nom de fichier est basé sur la date et le nom du ticker extraits du texte.
@@ -578,10 +558,10 @@ class TradeRepublicFileExcelJson:
         # Déterminer le dossier de destination et le nom du fichier
         if re.search(re.escape("INFORMATIONS SUR LES COÛTS EX-ANTE DE LA VENTE DE TITRES"), text):
             newFileName = f"{nameTicker}_{nouvelleDateStr}_Informations_sur_les_coûts.pdf"
-            detailsFolder = os.path.join('Code Python/Annexes/Ventes en Bourse/InformationsCoûts')
+            detailsFolder = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
         else:
             newFileName = f"{nameTicker}_{nouvelleDateStr}_Facture_Vente.pdf"
-            detailsFolder = os.path.join('Code Python/Annexes/Ventes en Bourse/FacturesVentes')
+            detailsFolder = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
 
         # Assurer l'existence du dossier de destination
         os.makedirs(detailsFolder, exist_ok=True)
@@ -598,114 +578,80 @@ class TradeRepublicFileExcelJson:
             print(f"Erreur inattendue lors du déplacement de {filePath}. Détails : {e}")
 
         print(f"Fichier renommé et déplacé de {filePath} vers {newFilePath}")
+    ###############################################################
 
 
-    @staticmethod
-    def DataDepotArgent(pdfFiles: list, chemin: str) -> pd.DataFrame:
+
+    #################### EXTRACTION DES DONNEES ####################
+    def DataDepotArgent(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: Chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
-        # Assertions pour vérifier les types des entrées
         assert isinstance(pdfFiles, list) and all(fichier.endswith(".pdf") for fichier in pdfFiles), \
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdfFiles}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=["Date de valeur", "Prix dépôt brut", "Frais", "Prix dépôt net", "Compte-titres", "Compte-espèces"])
-
+        df = pd.DataFrame()
+        
         for fichier in pdfFiles:
-            cheminComplet = os.path.join(chemin, fichier)  # Chemin complet du fichier PDF
-            
+            cheminComplet = os.path.join(chemin, fichier)
+
             try:
                 with pdfplumber.open(cheminComplet) as pdf:
                     page = pdf.pages[0]
                     text = page.extract_text()
 
-                # Extraction des données
-                compteTitrePattern = re.compile(r"(?<=49170 Saint-Georges-sur-Loire COMPTE-TITRES ).+")
-                compteTitreMatch = compteTitrePattern.search(text)
-                assert compteTitreMatch is not None, f"Compte titre non trouvé dans {fichier}"
-                compteTitre = int(compteTitreMatch.group(0))
-                assert isinstance(compteTitre, int), f"Le compte titre doit être un entier dans {fichier}"
+                compteTitre = int(self.ExtraireDonnee(text, r"COMPTE-TITRES (\d+)", 1))
+                montantBrut = float(self.ExtraireDonnee(text, r"(.+)(?=\s*DÉTAIL)", 1)[6:-4].replace(',', '.'))
+                frais = float(self.ExtraireDonnee(text, r"(?<=Frais de paiements par carte de crédit ).+", 0)[:-4].replace(',', '.'))
 
-                achatPattern = re.compile(r"(.+)(?=\s*DÉTAIL)")
-                achatMatch = achatPattern.search(text)
-                assert achatMatch is not None, f"Achat non trouvé dans {fichier}"
-                achat = achatMatch.group(0)[6:-4].replace(',', '.')
-                achat = float(achat)
-                assert isinstance(achat, float), f"L'achat doit être un nombre flottant dans {fichier}"
-
-                fraisPattern = re.compile(r"(?<=Frais de paiements par carte de crédit ).+")
-                fraisMatch = fraisPattern.search(text)
-                assert fraisMatch is not None, f"Frais non trouvés dans {fichier}"
-                frais = fraisMatch.group(0)[:-4].replace(',', '.')
-                frais = float(frais)
-                assert isinstance(frais, float), f"Les frais doivent être un nombre flottant dans {fichier}"
-
-                dataPattern = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-                dataMatch = dataPattern.search(text)
-                assert dataMatch is not None, f"Informations sur le compte espèces non trouvées dans {fichier}"
-                titre = dataMatch.group(0).split()
-                
-                compteEspece = titre[0]
-                assert isinstance(compteEspece, str), f"Le compte espèces doit être une chaîne de caractères dans {fichier}"
-                
-                dateStr = titre[1]
-                # Convertir la chaîne de date en objet datetime
-                dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-                # Définir la date de référence
-                dateReference = datetime(1900, 1, 1)
-                # Calculer le nombre de jours écoulés depuis la date de référence
-                dateValeur = (dateObj - dateReference).days
-                assert isinstance(dateValeur, int), f"La date valeur doit être un entier dans {fichier}"
-
-                montant = titre[2].replace(',', '.')
-                montant = float(montant)
-                assert isinstance(montant, float), f"Le montant doit être un nombre flottant dans {fichier}"
+                data = self.ExtraireDonnee(text, r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+", 0).split()
+                compteEspece = data[0]
+                dateValeur = datetime.strptime(data[1], "%d/%m/%Y").strftime("%Y/%m/%d")
+                montant = float(data[2].replace(',', '.'))
 
                 # Ajouter les données au DataFrame
-                newData = {
+                newRow = {
                     "Date de valeur": dateValeur,
-                    "Prix dépôt brut": achat,
+                    "Prix dépôt brut": montantBrut,
                     "Frais": frais,
                     "Prix dépôt net": montant,
                     "Compte-titres": compteTitre,
                     "Compte-espèces": compteEspece
                 }
-                
+
                 # Ajouter la nouvelle ligne au DataFrame
-                df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
-                
+                df = pd.concat([df, pd.DataFrame([newRow])], ignore_index=True)
 
             except AssertionError as e:
                 print(f"AssertionError: {e}")
             except Exception as e:
                 print(f"Erreur lors du traitement du fichier {fichier}: {e}")
-            
+
 
         nomFeuille = "Dépôts Argents"
         colonnesEuros = ["Prix dépôt brut", "Frais", "Prix dépôt net"]
         colonnesPourcentages = []
         colonnesDates = ["Date de valeur"]
         appliquerTableau = True
-        
+
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    @staticmethod
-    def DataDividendes(pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataDividendes(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: Chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
@@ -714,176 +660,47 @@ class TradeRepublicFileExcelJson:
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdfFiles}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=[
-            "Date de valeur", "TICKER", "Dividendes brut", "Impôt à la source",
-            "Dividendes net", "Titre(s) détenue(s)", "Dividende à la date du ...", "ISIN",
-            "COMPTE-TITRE", "COMPTE ESPÈCES"
-        ])
+        df = pd.DataFrame()
 
         for fichier in pdfFiles:
-            cheminComplet = os.path.join(chemin, fichier)  # Obtenez le chemin complet du fichier PDF
-
-            # Assurez-vous que le fichier PDF existe
-            assert os.path.isfile(cheminComplet), f"Le fichier {cheminComplet} n'existe pas."
+            cheminComplet = os.path.join(chemin, fichier)
 
             with pdfplumber.open(cheminComplet) as pdf:
                 page = pdf.pages[0]
                 text = page.extract_text()
 
-            # Définir des expressions régulières pour extraire les données
-            dateValeurRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            dateValeurRe1 = re.compile(r"(?<=COMPTE DE RÈGLEMENT DATE DE PAIEMENT MONTANT\n).+")
+            dateValeur = datetime.strptime((self.ExtraireDonnee(text, r'DE\d{20}\s(\d{2}[./]\d{2}[./]\d{4})', 1).replace(".", "/")), "%d/%m/%Y").strftime("%Y/%m/%d")
+            dateDividende = datetime.strptime((self.ExtraireDonnee(text, r'(?:au -|à la date du)\s*(\d{2}[./]\d{2}[./]\d{4})', 1).replace(".", "/")), "%d/%m/%Y").strftime("%Y/%m/%d")
+            compteEspece = self.ExtraireDonnee(text, r"DE\d{20}", 0)
+            isin = self.ExtraireDonnee(text, r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b", 0)
+            titreDetenue = float(self.ExtraireDonnee(text, r'([-+]?\d+[\.,]?\d*)\s+(titre\(s\)|unit\.)', 1).replace(",", "."))
+            ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
+            montantGagne = float(self.ExtraireDonnee(text, r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+|COMPTE DE RÈGLEMENT DATE DE PAIEMENT MONTANT\n.+", 0).split()[-2].replace(',', '.'))
 
-            titre = dateValeurRe.search(text)
-            if titre:
-                titre = titre.group(0)
-                dateValeurReFinal = re.search(r"\d{2}/\d{2}/\d{4}", titre).group(0)
-            elif dateValeurRe1:
-                titre = dateValeurRe1.search(text)
-                assert titre is not None, "Date de valeur non trouvée dans le texte."
-                dateValeurReFinal = re.search(r"\b\d{2}\.\d{2}\.\d{4}\b", text).group(0).replace(".", "/")
+            compteTitre = self.ExtraireDonnee(text, r"COMPTE-TITRES\s+(\d+)", 1)
+            if compteTitre == None:
+                compteTitre = self.ExtraireDonnee(text, r"(\d+)\s+DIVIDENDE EN ESPÈCES", 1)
+            if compteTitre == None:
+                raise ValueError("compteTitre non trouvée dans le texte.")
 
-
-            # Convertir la chaîne de date en objet datetime
-            dateObj = datetime.strptime(dateValeurReFinal, "%d/%m/%Y")
-            # Définir la date de référence
-            dateReference = datetime(1900, 1, 1)
-            # Calculer le nombre de jours écoulés depuis la date de référence
-            dateValeur = (dateObj - dateReference).days
-
-            dateDividendeRe = re.compile(r"(?<=Dividende à la date du ).+")
-            dateDividendeReText = dateDividendeRe.search(text)
-            if dateDividendeReText:
-                dateDividendeRe = dateDividendeReText.group(0)[:-1]
-                # Convertir la chaîne de date en objet datetime
-                dateObj = datetime.strptime(dateDividendeRe, "%d/%m/%Y")
-                # Calculer le nombre de jours écoulés depuis la date de référence
-                dateDividende = (dateObj - dateReference).days
+            montantAvantFrais = self.ExtraireDonnee(text, r"(.+)(?=\s*DÉTAIL)|(.+)(?=\s*RELEVÉ)", 0)
+            if not montantAvantFrais:
+                montantAvantFrais = 0
             else:
-                # Nouvelle option : extraire la date sous le format "Dividende en espèces avec la date d'exécution au -16.08.2024"
-                dateExecutionRe = re.compile(r"date d'exécution au\s*-\s*(\d{2}\.\d{2}\.\d{4})")
-                dateExecutionMatch = dateExecutionRe.search(text)
-                if dateExecutionMatch:
-                    dateDividendeStr = dateExecutionMatch.group(1)
-                    # Convertir la chaîne de date au format "dd.mm.yyyy" en objet datetime
-                    dateObj = datetime.strptime(dateDividendeStr, "%d.%m.%Y")
-                    # Calculer le nombre de jours écoulés depuis la date de référence
-                    dateDividende = (dateObj - dateReference).days
-                else:
-                    dateDividende = None
+                montantAvantFrais = float(montantAvantFrais.split()[-2].replace(",", "."))
 
-
-            compteTitreRe1 = re.compile(r"(?<=49170 Saint-Georges-sur-Loire COMPTE-TITRES ).+")
-            compteTitreRe2 = re.compile(r"(?<=49170 Saint-Georges-sur-Loire).+")
-            if (compteTitreRe1.search(text) is not None):
-                compteTitre = compteTitreRe1.search(text)
-                assert (compteTitre is not None), "Compte titre non trouvé dans le texte."
-            else:
-                compteTitre = compteTitreRe2.search(text)
-                assert (compteTitre is not None), "Compte titre non trouvé dans le texte."
-
-            compteTitre = compteTitre.group(0)
-            compteTitre = compteTitre.replace(',', '.')
-            compteTitre = float(compteTitre)
-
-            compteEspeceRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            compteEspece = compteEspeceRe.search(text)
-            if compteEspece:
-                compteEspece = compteEspece.group(0)
-                compteEspece = re.search(r"DE\d{20}", compteEspece).group(0)
-            else:
-                compteEspeceRe = re.compile(r"(?<=COMPTE DE RÈGLEMENT DATE DE PAIEMENT MONTANT\n).+")
-                compteEspece = compteEspeceRe.search(text)
-                assert compteEspece is not None, "Compte espèces non trouvé dans le texte."
-                compteEspece = compteEspece.group(0)
-                compteEspece = re.search(r"DE\d{20}", compteEspece).group(0)
-
-            # Extraire ISIN
-            isinRe = re.compile(r"(?<=ISIN : ).+")
-            isinMatch = isinRe.search(text)
-            if isinMatch:
-                isin = isinMatch.group(0)
-            else:
-                isinRe = re.compile(r"(?<=\n)([A-Z0-9]{12})\s+")
-                isinMatch = isinRe.search(text)
-                isin = isinMatch.group(0).strip() if isinMatch else None
-
-
-            # Extraire Titre
-            titreRe = re.compile(r"POSITION QUANTITÉ REVENU MONTANT\n(.+)")
-            titreRe1 = re.compile(r"POSITION QUANTITÉ TAUX MONTANT\n(.+)")
-            titreMatch = titreRe.search(text)
-            titre = titreMatch.group(1) if titreMatch else titreRe1.search(text).group(1) if titreRe1.search(text) else None
-
-            # Extraire Ticker et Titre Detenue
-            ticker = None
-            titreDetenue = None
-            if titre:
-                tickerMatch = re.search(r"([^0-9]+)(?=\d)", titre)
-                ticker = tickerMatch.group(0) if tickerMatch else None
-
-                titreDetenueMatch = re.search(r"\d,\d+", titre)
-                if titreDetenueMatch:
-                    titreDetenue = titreDetenueMatch.group(0).replace(',', '.')
-                    titreDetenue = float(titreDetenue)
-                else:
-                    titreRe1 = re.compile(r"\d+,\d+\n(.+)")
-                    titreDetenueMatch = titreRe1.search(text)
-                    if titreDetenueMatch:
-                        titreDetenue = float(titreDetenueMatch.group(1).split()[0])
-                    else:
-                        # Si les autres méthodes échouent, chercher la quantité sous la forme "0.856462 unit"
-                        quantiteMatch = re.search(r"(\d+\.\d+)\s*unit", text)
-                        if quantiteMatch:
-                            titreDetenue = float(quantiteMatch.group(1))
-
-            # Extraire Dividendes net
-            montantGagneRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            montantGagne = montantGagneRe.search(text)
-            if montantGagne:
-                montantGagne = montantGagne.group(0).split()
-                montantGagne = montantGagne[2]
-                montantGagne = montantGagne.replace(',', '.')
-                montantGagne = float(montantGagne)
-            else:
-                montantGagneRe = re.compile(r"COMPTE DE RÈGLEMENT DATE DE PAIEMENT MONTANT\n.+")
-                montantGagneLigne = montantGagneRe.search(text).group(0).split("\n")[1]
-                montantGagne = montantGagneLigne.split()[2]
-                montantGagne = montantGagne.replace(',', '.')
-                montantGagne = float(montantGagne)
-
-            # Extraire Montant Avant Frais
-            montantAvantFraisRe = re.compile(r"(.+)(?=\s*DÉTAIL)")
-            montantAvantFraisText = montantAvantFraisRe.search(text)
-            if montantAvantFraisText:
-                montantAvantFrais = montantAvantFraisText.group(0).split()
-                if len(montantAvantFrais) > 2:
-                    montantAvantFrais = float(montantAvantFrais[1].replace(',', '.'))
-            else:
-                montantAvantFrais = montantGagne
-
-            # Extraire Impôt
-            impotRe = re.compile(r"(?<=Impôt à la source ).+")
-            impotRe2 = re.compile(r"(?<=Impôt à la source pour les émetteurs américains ).+")
-            impotText = impotRe2.search(text) or impotRe.search(text)
-            if impotText:
-                impot = impotText.group(0)[:-4]
-                if ',' in impot:
-                    impot = impot.replace(',', '.')
-                newImpot = float(impot)
-            else:
-                newImpot = 0.0
-
+            newImpot = self.ExtraireDonnee(text, r"(?<=Impôt à la source ).+|(?<=Impôt à la source pour).+", 0)
+            newImpot = float(newImpot.split()[-2].replace(",", ".")) if newImpot else 0.0
 
             newData = {
                 "Date de valeur": dateValeur,
-                "TICKER": ticker,
+                "Ticker": ticker,
                 "Dividendes brut": montantAvantFrais,
                 "Impôt à la source": newImpot,
                 "Dividendes net": montantGagne,
                 "Titre(s) détenue(s)": titreDetenue,
                 "Dividende à la date du ...": dateDividende,
-                "ISIN": isin,
+                "Isin": isin,
                 "COMPTE-TITRE": compteTitre,
                 "COMPTE ESPÈCES": compteEspece
             }
@@ -900,15 +717,14 @@ class TradeRepublicFileExcelJson:
         
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    @staticmethod
-    def DataInteret(pdf: list, chemin: str) -> pd.DataFrame:
+    def DataInteret(self, pdf: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: Chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
@@ -917,7 +733,7 @@ class TradeRepublicFileExcelJson:
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdf}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=["Date d'effet", "Taux d'interêts", "Interêts net", "Plage de date", "Nature revenus", "Actifs", "Iban", "Compte-espèces"])
+        df = pd.DataFrame()
 
         for fichier in pdf:
             cheminComplet = os.path.join(chemin, fichier)  # Obtenez le chemin complet du fichier PDF
@@ -929,65 +745,38 @@ class TradeRepublicFileExcelJson:
                 page = pdf.pages[0]
                 text = page.extract_text()
 
-            # Extraire compte espèces
-            compteEspeceRe = re.compile(r"(?<=49170 Saint-Georges-sur-Loire COMPTE ESPÈCES ).+")
-            compteEspeceMatch = compteEspeceRe.search(text)
-            assert compteEspeceMatch is not None, "Compte espèces non trouvé dans le texte."
-            compteEspece = int(compteEspeceMatch.group(0))
+            compteEspece = self.ExtraireDonnee(text, r"COMPTE-TITRES\s+(\d+)", 1)
+            if compteEspece == None:
+                compteEspece = self.ExtraireDonnee(text, r"(\d+)\s+RAPPORT D'INTÉRÊTS", 1)
+            if compteEspece == None:
+                raise ValueError("compteTitre non trouvée dans le texte.")
 
-            # Extraire les données principales
-            dataRe = re.compile(r"(?<=ACTIFS NATURE DES REVENUS TAUX D'INTÉRÊTS TOTAL\n).+")
-            dataMatch = dataRe.search(text)
-            if dataMatch:
-                titre = dataMatch.group(0).split()
-                assert len(titre) >= 4, "Le format des données est incorrect."
-                espece = titre[0]
-                interet = titre[1]
-                pourcentage = float(titre[2][:-1].replace(',', '.')) / 100
-                prix1 = float(titre[3].replace(',', '.'))
-                plageDate = None
-            else:
-                dataRe = re.compile(r"(?<=ACTIFS NATURE DES REVENUS TAUX D'INTÉRÊTS DATE TOTAL\n).+")
-                dataMatch = dataRe.search(text)
-                assert dataMatch is not None, "Données principales non trouvées dans le texte."
-                titre = dataMatch.group(0).split()
-                assert len(titre) >= 7, "Le format des données est incorrect."
-                espece = titre[0]
-                interet = titre[1]
-                pourcentage = float(titre[2][:-1].replace(',', '.')) / 100
-                prix1 = float(titre[6].replace(',', '.'))
-                plageDate = f"{titre[3]} - {titre[5]}"
+            iban = self.ExtraireDonnee(text, r"DE\d{20}", 0)
 
-            # Extraire IBAN et autres détails
-            ibanRe = re.compile(r"(?<=IBAN DATE D'EFFET TOTAL\n).+")
-            ibanMatch = ibanRe.search(text)
-            assert ibanMatch is not None, "IBAN non trouvé dans le texte."
-            titre = ibanMatch.group(0).split()
-            assert len(titre) >= 3, "Le format des données IBAN est incorrect."
-            iban = titre[0]
+            listeMotifs = [
+                r"(?<=ACTIFS NATURE DES REVENUS TAUX D'INTÉRÊTS TOTAL\n).+", 
+                r"(?<=ACTIFS NATURE DES REVENUS TAUX D'INTÉRÊTS DATE TOTAL\n).+", 
+                r"(?<=ACTIFS NATURE DES REVENUS TAUX D'INTÉRÊT DATE TOTAL\n).+"
+            ]
+            ligne = self.ExtraireDonnee(text, self.CreerExpressionReguliere(listeMotifs), 0).split()
+            espece = ligne[0]
+            interet = ligne[1]
+            pourcentage = float(ligne[2][:-1].replace(',', '.')) / 100
+            prix = float(ligne[-2].replace(',', '.'))
+            plageDate = f"{ligne[3]} - {ligne[5]}" if len(ligne) > 5 else None
 
-            dateStr = titre[1]
-            # Convertir la chaîne de date en objet datetime
-            dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-            # Définir la date de référence
-            dateReference = datetime(1900, 1, 1)
-            # Calculer le nombre de jours écoulés depuis la date de référence
-            dateEffet = (dateObj - dateReference).days
-
-            prix2 = float(titre[2].replace(',', '.'))
+            dateEffet = datetime.strptime(self.ExtraireDonnee(text, r"(?<=IBAN DATE D'EFFET TOTAL\n).*\b\d{2}/\d{2}/\d{4}\b", 0).split()[1], "%d/%m/%Y").strftime("%Y/%m/%d")
 
             newData = {
                 "Date d'effet": dateEffet,
                 "Taux d'interêts": pourcentage,
-                "Interêts net": prix2,
+                "Interêts net": prix,
                 "Plage de date": plageDate,
                 "Nature revenus": interet,
                 "Actifs": espece,
                 "Iban": iban,
                 "Compte-espèces": compteEspece
             }
-
-            compteEspece, iban, plageDate, dateEffet, espece, interet, pourcentage, prix2
 
             # Ajouter la nouvelle ligne au DataFrame
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
@@ -998,18 +787,17 @@ class TradeRepublicFileExcelJson:
         colonnesPourcentages = ["Taux d'interêts"]
         colonnesDates = ["Date d'effet"]
         appliquerTableau = True
-        
+
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    @staticmethod
-    def DataOrdresAchats(pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataOrdresAchats(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: Chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
@@ -1018,145 +806,81 @@ class TradeRepublicFileExcelJson:
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdfFiles}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=["Date de valeur", "TICKER", "Montant investi", "Titre(s) détenue(s)", "COURS MOYEN", "COMPTE-TITRE", "ISIN", "COMPTE ESPÈCES"])
+        df = pd.DataFrame()
 
         for fichier in pdfFiles:
             cheminComplet = os.path.join(chemin, fichier)  # Obtenez le chemin complet du fichier PDF
-            
+
             with pdfplumber.open(cheminComplet) as pdf:
                 page = pdf.pages[0]
-                text = page.extract_text() or ""
-
-            # Extraction de la date de valeur
-            dateValeurRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            titreMatch = dateValeurRe.search(text)
-            if titreMatch:
-                titre = titreMatch.group(0)
-                dateValeurRe = re.search(r"\d{2}/\d{2}/\d{4}", titre)
-                if dateValeurRe:
-                    dateValeurRe = dateValeurRe.group(0)
-                else:
-                    dateValeurRe = re.search(r"\d{4}-\d{2}-\d{2}", titre)
-                    if dateValeurRe:
-                        dateValeurRe = dateValeurRe.group(0).replace('-', '/')
-                        dateValeurRe = dateValeurRe[-2:] + dateValeurRe[-6:-2] + dateValeurRe[:4]
-            else:
-                dateValeurRe = ""
+                text = page.extract_text()
             
-            # Convertir la chaîne de date en objet datetime
-            try:
-                dateObj = datetime.strptime(dateValeurRe, "%d/%m/%Y")
-                dateValeur = (dateObj - datetime(1900, 1, 1)).days
-            except ValueError:
-                dateValeur = None
-
-            # Extraction du compte titre
-            compteTitreRe = re.compile(r"COMPTE-TITRES.+")
-            compteTitreMatch = compteTitreRe.search(text)
-            if compteTitreMatch:
-                compteTitre = compteTitreMatch.group(0)[14:]
-                compteTitre = compteTitre.replace(',', '.')
-                compteTitre = float(compteTitre)
-            else:
-                compteTitre = None
-
-            # Extraction du compte espèces
-            compteEspeceRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            compteEspeceMatch = compteEspeceRe.search(text)
-            if compteEspeceMatch:
-                compteEspece = re.search(r"DE\d{20}", compteEspeceMatch.group(0))
-                compteEspece = compteEspece.group(0) if compteEspece else None
-            else:
-                compteEspece = None
-
-            # Extraction de l'ISIN
-            isinRe = re.compile(r"(?<=ISIN : ).+")
-            isinMatch = isinRe.search(text)
-            isin = isinMatch.group(0) if isinMatch else None
-
-            # Extraction du titre détenu
-            titreRe = re.compile(r"(?<=POSITION QUANTITÉ COURS MOYEN MONTANT\n).+")
-            titreMatch = titreRe.search(text)
-            if titreMatch:
-                titre = titreMatch.group(0)
-                tickerMatch = re.search(r"([^0-9]+)(?=\d)", titre)
-                ticker = tickerMatch.group(0) if tickerMatch else None
-
-                titreDetenueMatch = re.search(r"\d,\d+", titre)
-                titreDetenue = titreDetenueMatch.group(0).replace(',', '.') if titreDetenueMatch else None
-                titreDetenue = float(titreDetenue) if titreDetenue else None
-
-                montantPattern = re.compile(r'\b\d{1,6}(?:,\d{2})? EUR\b')
-                montantMatch = montantPattern.search(titre)
-                montantAchat = float(montantMatch.group(0).replace(",", ".")[:-4]) if montantMatch else None
-            else:
-                ticker = None
-                titreDetenue = None
-                montantAchat = None
-
-            # Extraction de l'impôt
-            impotRe = re.compile(r"(?<=Impôt à la source ).+")
-            impotRe2 = re.compile(r"(?<=Impôt à la source pour les émetteurs américains ).+")
-            impotMatch = impotRe2.search(text) or impotRe.search(text)
-            impot = impotMatch.group(0)[:-4] if impotMatch else "0.00"
-            impot = float(impot.replace(',', '.'))
-
-            # Extraction du montant gagné
-            montantGagneRe = re.compile(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+")
-            montantGagneMatch = montantGagneRe.search(text)
-            if montantGagneMatch:
-                montantGagne = montantGagneMatch.group(0).split()
-                montantGagne = montantGagne[2]
-                montantGagne = float(montantGagne.replace(',', '.'))
-            else:
-                montantGagne = None
+            compteTitre = self.ExtraireDonnee(text, r"COMPTE-TITRES\s+(\d+)", 1)
+            if compteTitre == None:
+                compteTitre = self.ExtraireDonnee(text, r"(\d+)\s+CONFIRMATION DE L'INVESTISSEMENT PROGRAMMÉ", 1)
+            if compteTitre == None:
+                raise ValueError("compteTitre non trouvée dans le texte.")
+            
+            iban = self.ExtraireDonnee(text, r"DE\d{20}", 0)
+            isin = self.ExtraireDonnee(text, r"(?<=ISIN : ).+", 0)
+            dateExecution = datetime.strftime(datetime.strptime(self.ExtraireDonnee(text,r"(?<=DATE\s)(\d{2}/\d{2}/\d{4})", 0), "%d/%m/%Y"), "%Y/%m/%d")
+            ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
+            titreDetenue = float(self.ExtraireDonnee(text, r'([-+]?\d+[\.,]?\d*)\s+(titre\(s\)|unit\.)', 1).replace(",", "."))
+            montantInvesti = float(self.ExtraireDonnee(text, r"COMPTE-ESPÈCES DATE DE VALEUR MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1).replace(",", "."))
+            coursMoyen = float(self.ExtraireDonnee(text, r"POSITION QUANTITÉ COURS MOYEN MONTANT\s+.*?\s([\d,]+)\sEUR", 1).replace(",", "."))
+            
+            dateValeur = self.ExtraireDonnee(text, r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n)\S+\s+(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})", 1)
+            if "/" in dateValeur:  # Pour le format DD/MM/YYYY
+                dateValeur = datetime.strftime(datetime.strptime(dateValeur, "%d/%m/%Y"), "%Y/%m/%d")
+            elif "-" in dateValeur:  # Pour le format YYYY-MM-DD
+                dateValeur = datetime.strftime(datetime.strptime(dateValeur.replace("-", "/"), "%Y/%m/%d"), "%Y/%m/%d")
 
             newData = {
+                "Date d'exécution": dateExecution,
                 "Date de valeur": dateValeur,
-                "TICKER": ticker,
-                "Montant investi": montantGagne,
+                "Ticker": ticker,
+                "Montant investi": montantInvesti,
                 "Titre(s) détenue(s)": titreDetenue,
-                "COURS MOYEN": montantAchat,
-                "ISIN": isin,
+                "Cours moyen": coursMoyen,
+                "Isin": isin,
                 "COMPTE-TITRE": compteTitre,
-                "COMPTE ESPÈCES": compteEspece
+                "Iban": iban
             }
 
             # Ajouter la nouvelle ligne au DataFrame
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
-        
+
         # Un fichier PDF n'a pas pu être téléchargé sur Trade République c'est l'investissement d'Apple donc il faut le rajouter (supprimer pour votre portefeuille)*
         newData = {
-            "Date de valeur": 45154,
-            "TICKER": "Apple Inc.",
+            "Date d'exécution": datetime.strptime("2023/08/16", "%Y/%m/%d").strftime("%Y/%m/%d"),
+            "Date de valeur": datetime.strptime("2023/08/18", "%Y/%m/%d").strftime("%Y/%m/%d"),
+            "Ticker": "Apple Inc.",
             "Montant investi": -4.00,
             "Titre(s) détenue(s)": 0.02457,
-            "COURS MOYEN": 162.80,
-            "ISIN": "US0378331005",
-            "COMPTE-TITRE": 700305101,
-            "COMPTE ESPÈCES": "DE83502109007011655011",
+            "Cours moyen": 162.80,
+            "Isin": "US0378331005",
+            "COMPTE-TITRE": "0700305101",
+            "Iban": "DE83502109007011655011",
         }
         df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
-
         nomFeuille = "Ordres d'Achats"
-        colonnesEuros = ["Montant investi", "COURS MOYEN"]
+        colonnesEuros = ["Montant investi", "Cours moyen"]
         colonnesPourcentages = []
-        colonnesDates = ["Date de valeur"]
+        colonnesDates = ["Date d'exécution", "Date de valeur"]
         appliquerTableau = True
-        
+
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    @staticmethod
-    def DataOrdresVentes(pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataOrdresVentes(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: Chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
@@ -1165,7 +889,7 @@ class TradeRepublicFileExcelJson:
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdfFiles}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=["Date de valeur", "TICKER", "Montant gagné", "Titre(s) détenue(s)", "ISIN", "COMPTE-TITRE", "COMPTE ESPÈCES"])
+        df = pd.DataFrame()
 
         for fichier in pdfFiles:
             cheminComplet = os.path.join(chemin, fichier)  # Obtenez le chemin complet du fichier PDF
@@ -1173,57 +897,44 @@ class TradeRepublicFileExcelJson:
                 page = pdf.pages[0]
                 text = page.extract_text()
 
-            # Extraire et formater la date
-            dataRe = re.search(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+", text)
-            assert dataRe, f"Date non trouvée dans le fichier {fichier}"
-            titre = dataRe.group(0)
             
-            try:
-                dateRe = re.search(r"\d{2}/\d{2}/\d{4}", titre).group(0)
-            except AttributeError:
-                dateRe = re.search(r"\d{4}-\d{2}-\d{2}", titre).group(0).replace("-", "/")
-                dateRe = dateRe[-2:] + dateRe[4:-2] + dateRe[:4]
-            
-            # Extraire et formater les autres données
-            compteEspece = re.search(r"DE\d{20}", titre).group(0)
-            montantGagne = re.search(r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n).+", text).group(0).split()[2]
-            montantGagne = float(montantGagne.replace(',', '.'))
-            
-            # Convertir la chaîne de date en objet datetime
-            dateObj = datetime.strptime(dateRe, "%d/%m/%Y")
-            dateReference = datetime(1900, 1, 1)
-            date = (dateObj - dateReference).days
+            compteTitre = self.ExtraireDonnee(text, r"COMPTE-TITRES\s+(\d+)", 1)
+            if compteTitre == None:
+                compteTitre = self.ExtraireDonnee(text, r"(\d+)\s+CONFIRMATION DE L'INVESTISSEMENT PROGRAMMÉ", 1)
+            if compteTitre == None:
+                raise ValueError("compteTitre non trouvée dans le texte.")
 
-            compteTitre = re.search(r"COMPTE-TITRES.+", text).group(0)[14:]
-            compteTitre = float(compteTitre.replace(',', '.'))
+            dateValeur = self.ExtraireDonnee(text, r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n)\S+\s+(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})", 1)
+            if "/" in dateValeur:  # Pour le format DD/MM/YYYY
+                dateValeur = datetime.strftime(datetime.strptime(dateValeur, "%d/%m/%Y"), "%Y/%m/%d")
+            elif "-" in dateValeur:  # Pour le format YYYY-MM-DD
+                dateValeur = datetime.strftime(datetime.strptime(dateValeur.replace("-", "/"), "%Y/%m/%d"), "%Y/%m/%d")
             
-            try:
-                isin = re.search(r"(?<=ISIN : ).+", text).group(0)
-            except AttributeError:
-                isin = None
-            
-            titreRe = re.search(r"(?<=POSITION QUANTITÉ PRIX MONTANT\n).+", text)
-            titre = titreRe.group(0) if titreRe else None
+            iban = self.ExtraireDonnee(text, r"DE\d{20}", 0)
+            isin = self.ExtraireDonnee(text, r"(?<=ISIN : ).+", 0)
+            dateExecution = datetime.strftime(datetime.strptime(self.ExtraireDonnee(text,r"(?<=DATE\s)(\d{2}/\d{2}/\d{4})", 0), "%d/%m/%Y"), "%Y/%m/%d")
+            ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
+            titreDetenue = float(self.ExtraireDonnee(text, r'([-+]?\d+[\.,]?\d*)\s+(titre\(s\)|unit\.)', 1).replace(",", "."))
+            montantVendu = float(self.ExtraireDonnee(text, r"POSITION QUANTITÉ PRIX MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1).replace(",", "."))
+            prixTickerLorsDeLaVente = float(self.ExtraireDonnee(text, r"POSITION QUANTITÉ PRIX MONTANT\s+.*?\s([\d,]+)\sEUR", 1).replace(",", "."))
+            montantGagne = float(self.ExtraireDonnee(text, r"COMPTE-ESPÈCES DATE DE VALEUR MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1).replace(",", "."))
 
-            try:
-                ticker = re.search(r"([^0-9]+)(?=\d)", titre).group(0) if titre else None
-            except AttributeError:
-                ticker = None
-            
-            try:
-                titreDetenue = re.search(r"\d,\d+", titre).group(0).replace(',', '.')
-                titreDetenue = float(titreDetenue)
-            except AttributeError:
-                titreDetenue = None
+            frais = self.ExtraireDonnee(text, r"POSITION MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1)
+            frais = float(frais.replace(",", ".")) if frais else 0
+
 
             newData = {
-                "Date de valeur": date,
-                "TICKER": ticker,
+                "Date d'exécution": dateExecution, 
+                "Date de valeur": dateValeur,
+                "Ticker": ticker,
+                "Montant vendu": montantVendu,
+                "Frais": frais,
                 "Montant gagné": montantGagne,
-                "Titre(s) détenue(s)": titreDetenue,
-                "ISIN": isin,
+                "Titre(s) vendu(s)": titreDetenue,
+                "Prix du ticker lors de la vente": prixTickerLorsDeLaVente,
+                "Isin": isin,
                 "COMPTE-TITRE": compteTitre,
-                "COMPTE ESPÈCES": compteEspece
+                "Iban": iban
             }
 
             # Ajouter la nouvelle ligne au DataFrame
@@ -1231,22 +942,21 @@ class TradeRepublicFileExcelJson:
 
 
         nomFeuille = "Ordres de Ventes"
-        colonnesEuros = ["Montant gagné"]
+        colonnesEuros = ["Montant vendu", "Frais", "Montant gagné", "Prix du ticker lors de la vente"]
         colonnesPourcentages = []
-        colonnesDates = ["Date de valeur"]
+        colonnesDates = ["Date d'exécution", "Date de valeur"]
         appliquerTableau = True
-        
+
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    @staticmethod
-    def DataRetraitArgent(pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataRetraitArgent(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
-        
+
         Args:
             pdfFiles: Liste des noms de fichiers PDF à traiter.
             chemin: chemin du répertoire contenant les fichiers PDF.
-            
+
         Returns:
             pd.DataFrame: DataFrame contenant les données extraites de chaque fichier PDF.
         """
@@ -1255,65 +965,29 @@ class TradeRepublicFileExcelJson:
             f"pdfFiles doit être une liste dont Le contenu contient des chaînes de caractères avec l'extension .pdf: {pdfFiles}"
         assert isinstance(chemin, str) and os.path.isdir(chemin), f"Le dossier '{chemin}' n'existe pas"
 
-        df = pd.DataFrame(columns=["Date de la commande", "CE QUE L'ON A ACHETE", "Retraits net", "FRAIS", "QUANTITE", "Date de facture", "NUMERO DE FACTURE"])
+        df = pd.DataFrame()
 
         for fichier in pdfFiles:
-            cheminComplet = os.path.join(chemin, fichier)  # Obtenez le chemin complet du fichier PDF
+            cheminComplet = os.path.join(chemin, fichier)
             with pdfplumber.open(cheminComplet) as pdf:
                 page = pdf.pages[0]
                 text = page.extract_text()
 
-            # Extraction de la date de valeur
-            dateValeurRe = re.compile(r"(?<=square Jean Gasiorowski 7 DATE ).+")
-            titre = dateValeurRe.search(text).group(0).replace('.', '/')
-            dateValeurReFinal = re.search(r"\d{2}/\d{2}/\d{4}", titre).group(0)
 
-            # Convertir la chaîne de date en objet datetime
-            dateObj = datetime.strptime(dateValeurReFinal, "%d/%m/%Y")
-            # Définir la date de référence
-            dateReference = datetime(1900, 1, 1)
-            # Calculer le nombre de jours écoulés depuis la date de référence
-            dateValeur = (dateObj - dateReference).days
-
-            # Extraction du numéro de facture
-            numeroFactureRe = re.compile(r"(?<=FACTURE N. ).+")
-            numeroFacture = numeroFactureRe.search(text).group(0)
-
-            # Extraction des détails de la commande
-            dataRe = re.compile(r"(?<=POSITION COMMANDÉ LE QUANTITÉ\n).+")
-            titre = dataRe.search(text).group(0).split()
-            achat = ' '.join(titre[:-2])
-            commandeDate = titre[-2].replace('.', '/')
-            # Convertir la chaîne de date en objet datetime
-            dateObj = datetime.strptime(commandeDate, "%d/%m/%Y")
-            # Calculer le nombre de jours écoulés depuis la date de référence
-            commandeDate = (dateObj - dateReference).days
-
-            quantite = int(titre[-1])
-
-            # Extraction du Retraits net et du type de paiement
-            dataRe = re.compile(r"(?<=POSITION MONTANT\n).+")
-            titre = dataRe.search(text).group(0).split()
-            typePayment = titre[0]
-            montant = float(titre[1].replace(',', '.'))
-
-            # Assertions pour vérifier les types et valeurs attendus
-            assert isinstance(numeroFacture, str), "Le numéro de facture doit être une chaîne de caractères"
-            assert isinstance(dateValeur, int), "La date de valeur doit être un entier"
-            assert isinstance(achat, str), "Le détail de l'achat doit être une chaîne de caractères"
-            assert isinstance(commandeDate, int), "La date de commande doit être un entier"
-            assert isinstance(quantite, int), "La quantité doit être un entier"
-            assert isinstance(typePayment, str), "Le type de paiement doit être une chaîne de caractères"
-            assert isinstance(montant, float), "Le montant doit être un nombre flottant"
-
+            nomAchat = self.ExtraireDonnee(text, r"POSITION COMMANDÉ LE QUANTITÉ\s+(.*)\s\d{2}\.\d{2}\.\d{4}", 1)
+            dateCommande = datetime.strftime(datetime.strptime(self.ExtraireDonnee(text, r"POSITION COMMANDÉ LE QUANTITÉ\s+.*?\s(\d{2}\.\d{2}\.\d{4})", 1).replace(".", "/"), "%d/%m/%Y"), "%Y/%m/%d")
+            quantite = float(self.ExtraireDonnee(text, r"POSITION COMMANDÉ LE QUANTITÉ\s+.*?\d{2}\.\d{2}\.\d{4}\s+(\d+)", 1).replace(",", "."))
+            dateDuFichierPdf = datetime.strftime(datetime.strptime(self.ExtraireDonnee(text, r"(?<=DATE\s)(\d{2}\.\d{2}\.\d{4})", 0).replace(".", "/"), "%d/%m/%Y"), "%Y/%m/%d")
+            numeroFacture = self.ExtraireDonnee(text, r"(?<=FACTURE N. ).+", 0)
+            prixAchat = float(self.ExtraireDonnee(text, r"POSITION MONTANT\s+.*?\s([-–]?\d+,\d+)\s?€", 1).replace(",", "."))
+            
             newData = {
-                "Date de la commande": commandeDate,
-                "CE QUE L'ON A ACHETE": achat,
-                "Retraits net": montant,
-                "FRAIS": typePayment,
-                "QUANTITE": quantite,
-                "Date de facture": dateValeur,
-                "NUMERO DE FACTURE": numeroFacture
+                "Date de la commande": dateCommande,
+                "Ce que l'on à acheté": nomAchat,
+                "Prix d'achat": prixAchat,
+                "Quantite": quantite,
+                "Date de facture": dateDuFichierPdf,
+                "Numéro de facture": numeroFacture
             }
 
             # Ajouter la nouvelle ligne au DataFrame
@@ -1321,13 +995,59 @@ class TradeRepublicFileExcelJson:
 
 
         nomFeuille = "Retrait d'argent"
-        colonnesEuros = ["Retraits net", "FRAIS"]
+        colonnesEuros = ["Prix d'achat"]
         colonnesPourcentages = []
         colonnesDates = ["Date de la commande", "Date de facture"]
         appliquerTableau = True
-        
+
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
+
+    @staticmethod
+    def ExtraireDonnee(texte: str, pattern: str, group: int) -> str:
+        """
+        Extrait une donnée spécifique d'un texte donné à l'aide d'un pattern regex.
+
+        Args:
+            texte (str): Le texte brut contenant les informations à extraire.
+            pattern (str): Le pattern regex permettant de capturer la donnée souhaitée.
+            group (int): Le numéro du groupe capturé à retourner.
+
+        Returns:
+            str: La donnée extraite correspondant au groupe spécifié dans le pattern.
+        """
+        assert isinstance(texte, str), "Le texte doit être une chaîne de caractères."
+        assert isinstance(pattern, str), "Le pattern doit être une chaîne de caractères."
+        assert isinstance(group, int) and group >= 0, "Le numéro de groupe doit être un entier positif ou zéro."
+
+        match = re.search(pattern, texte)
+        if not match:
+            return None
+
+        try:
+            return match.group(group)
+        except IndexError:
+            raise IndexError(f"Le numéro de groupe {group} est invalide pour le pattern donné.")
+
+    @staticmethod
+    def CreerExpressionReguliere(listeMotifs: list[str]) -> str:
+        """
+        Construit une expression régulière combinée avec des 'OU' (|) à partir
+        d'une liste de motifs donnés.
+
+        Args:
+            listeMotifs (list[str]): Liste de motifs d'expressions régulières.
+
+        Returns:
+            str: Une expression régulière combinée avec des 'OU'.
+        """
+        assert isinstance(listeMotifs, list), "listeMotifs doit être une liste."
+        assert all(isinstance(motif, str) for motif in listeMotifs), "Tous les éléments de listeMotifs doivent être des chaînes de caractères."
+
+        # Concaténer les motifs avec des 'OU' (|)
+        expressionReguliereCombinee = '|'.join(listeMotifs)
+
+        return expressionReguliereCombinee
 
     @staticmethod
     def ProcessPdf(nameDirectory: str, cheminDossierRenommer: str, nameFunction) -> None:
@@ -1374,10 +1094,10 @@ class TradeRepublicFileExcelJson:
         """
         # Assertions pour vérifier les types des entrées
         assert isinstance(filePath, str), f"filePath doit être une chaîne de caractères: {filePath}"
-        
+
         # Initialiser une variable pour stocker le texte extrait
         text = ''
-        
+
         try:
             # Ouvrir le fichier PDF
             with open(filePath, 'rb') as file:
@@ -1390,5 +1110,6 @@ class TradeRepublicFileExcelJson:
         except Exception as e:
             print(f"Une erreur s'est produite lors de l'extraction du texte: {e}")
             return None
-        
+
         return text
+    ################################################################
