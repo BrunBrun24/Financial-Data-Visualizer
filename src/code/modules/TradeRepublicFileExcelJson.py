@@ -357,7 +357,7 @@ class TradeRepublicFileExcelJson:
         Parcourt les fichiers PDF dans un répertoire, puis utilise une fonction spécifiée pour traiter chaque fichier PDF et le déplacer.
         """
         
-        # Liste des opérations à effectuer
+        directory = self.directoryData
         operations = [
             {"directory": (directory + "Ordres d'achats/data"), "directoryRename": (directory + "Ordres d'achats"), "createFunction": self.RenameAndMoveOrdresAchats},
             {"directory": (directory + "Dépôts d'argents/data"), "directoryRename": (directory + "Dépôts d'argents"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
