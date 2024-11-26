@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import re
 from datetime import datetime
-from PyPDF2 import PdfReader
 from openpyxl import Workbook
 import pdfplumber
 import json
@@ -36,9 +35,12 @@ class TradeRepublicFileExcelJson:
         assert isinstance(directoryData, str), f"directoryData doit être une chaîne, mais c'est {type(directoryData).__name__}."
         assert os.path.exists(directoryData), f"Le fichier ou le dossier '{directoryData}' n'existe pas."
         assert os.path.isdir(directoryData), f"'{directoryData}' n'est pas un dossier."
+        assert isinstance(tickerMapping, dict), f"mappingTickers doit être un dictionnaire: ({type(tickerMapping).__name__})"
 
         self.directoryData = directoryData
         self.tickerMapping = tickerMapping
+
+        self.ProcessPdf()
 
 
 
@@ -108,7 +110,7 @@ class TradeRepublicFileExcelJson:
             dataFrame (pd.DataFrame): Le DataFrame à sauvegarder.
             pathJson (str): Le chemin où sauvegarder le fichier JSON.
         """
-        mappingTickers = self.tickerMapping
+        mappingTickers = self.tickerMapping.copy()
 
         # Vérifications des types des arguments
         assert isinstance(dataFrame, pd.DataFrame), f"dataFrame doit être un pd.DataFrame, mais c'est {type(dataFrame).__name__}."
@@ -128,16 +130,8 @@ class TradeRepublicFileExcelJson:
             # Création d'un motif pour rechercher les noms d'entreprises dans les tickers
             pattern = re.compile('|'.join(re.escape(key) for key in mappingTickers.keys()), re.IGNORECASE)
 
-            def mapTickerValue(ticker):
-                """Remplace la valeur du ticker si elle correspond à un nom d'entreprise dans le dictionnaire."""
-                match = pattern.search(ticker.lower())
-                if match:
-                    matchedKey = match.group(0).lower()
-                    return mappingTickers[matchedKey]
-                return ticker
-
             # Appliquer le mappage des tickers à la colonne 'ticker'
-            dataFrame[tickerCol] = dataFrame[tickerCol].apply(mapTickerValue)
+            dataFrame[tickerCol] = dataFrame[tickerCol].apply(lambda ticker: self.MapTickerValue(ticker, mappingTickers, pattern))
 
         # Convertir le DataFrame en JSON
         jsonData = dataFrame.to_json(orient="records", force_ascii=False, indent=4)
@@ -146,43 +140,54 @@ class TradeRepublicFileExcelJson:
         with open(pathJson, 'w', encoding="utf-8") as f:
             f.write(jsonData)
 
-    def SaveTransactionsToJson(self, dataFrames: list, pathJson: str):
+    @staticmethod
+    def MapTickerValue(ticker: str, mappingTickers: dict, pattern: re.Pattern) -> str:
+        """
+        Remplace la valeur du ticker si elle correspond à un nom d'entreprise dans le dictionnaire.
+
+        Args:
+            ticker (str): La valeur du ticker à analyser.
+            mappingTickers (dict): Le dictionnaire de correspondance des tickers (clefs normalisées en minuscules).
+            pattern (re.Pattern): Le motif regex pour rechercher les noms d'entreprises dans les tickers.
+
+        Returns:
+            str: La valeur du ticker mappée ou l'original si aucune correspondance n'est trouvée.
+        """
+        assert isinstance(ticker, str), f"ticker doit être une chaîne, mais c'est {type(ticker).__name__}."
+        assert isinstance(mappingTickers, dict), f"mappingTickers doit être un dictionnaire, mais c'est {type(mappingTickers).__name__}."
+        assert isinstance(pattern, re.Pattern), f"pattern doit être une instance de re.Pattern, mais c'est {type(pattern).__name__}."
+
+        match = pattern.search(ticker.lower())
+        if match:
+            matchedKey = match.group(0).lower()
+            return mappingTickers[matchedKey]
+        return ticker
+
+    def SaveTransactionsToJson(self, dataFrames: list, pathJson: str) -> None:
         """
         Enregistre les transactions d'achats et de ventes dans un fichier JSON structuré, avec correction des tickers.
 
         Args:
             dataFrames (list): Liste contenant deux DataFrames, l'un pour les achats, l'autre pour les ventes.
             pathJson (str): Chemin où sauvegarder le fichier JSON.
-            mappingTickers (dict): Dictionnaire de mapping des noms d'entreprises vers leurs tickers.
-
-        Returns:
-            None
         """
-        mappingTickers = self.tickerMapping
         # Vérifications des types des arguments
         assert isinstance(dataFrames, list) and len(dataFrames) == 2, \
             f"dataFrames doit être une liste contenant deux DataFrames, mais c'est {type(dataFrames).__name__}."
         assert isinstance(pathJson, str) and pathJson.endswith(".json"), \
             f"pathJson doit être une chaîne se terminant par '.json', mais c'est {type(pathJson).__name__}."
-        assert isinstance(mappingTickers, dict), f"mappingTickers doit être un dictionnaire: ({type(mappingTickers).__name__})"
-
+        
+        tickerMapping = self.tickerMapping.copy()
         achats, ventes = dataFrames
 
         # Normalisation des clés du dictionnaire de mapping en minuscules
-        mappingTickers = {key.lower(): value for key, value in mappingTickers.items()}
+        tickerMapping = {key.lower(): value for key, value in tickerMapping.items()}
 
         # Création d'un motif pour rechercher les noms d'entreprises dans les tickers
-        pattern = re.compile('|'.join(re.escape(key) for key in mappingTickers.keys()), re.IGNORECASE)
+        pattern = re.compile('|'.join(re.escape(key) for key in tickerMapping.keys()), re.IGNORECASE)
 
         # Format JSON pour les transactions
         transactions = []
-
-        def findTransactionByTicker(transactions, ticker):
-            """Recherche un ticker dans la liste de transactions."""
-            for transaction in transactions:
-                if transaction["ticker"] == ticker:
-                    return transaction
-            return None
 
         # Concaténer achats et ventes pour obtenir tous les tickers uniques
         tickers = sorted(set(achats["Ticker"]).union(set(ventes["Ticker"])))
@@ -196,10 +201,14 @@ class TradeRepublicFileExcelJson:
             match = pattern.search(ticker.lower())
             if match:
                 matchedKey = match.group(0).lower()
-                ticker = mappingTickers[matchedKey]
+                ticker = tickerMapping[matchedKey]
+            
+            transaction = None
+            for tr in transactions:
+                if tr["ticker"] == ticker:
+                    transaction = tr
+                    break
 
-            # Rechercher si le ticker est déjà dans transactions
-            transaction = findTransactionByTicker(transactions, ticker)
             if not transaction:
                 transaction = {"ticker": ticker, "achats": [], "ventes": []}
                 transactions.append(transaction)
@@ -207,14 +216,14 @@ class TradeRepublicFileExcelJson:
             # Ajouter les achats au ticker
             for _, row in achatDf.iterrows():
                 transaction["achats"].append({
-                    "date": row["Date de valeur"],
+                    "date": row["Date d'exécution"],
                     "price": abs(row["Montant investi"])
                 })
 
             # Ajouter les ventes au ticker
             for _, row in venteDf.iterrows():
                 transaction["ventes"].append({
-                    "date": row["Date de valeur"],
+                    "date": row["Date d'exécution"],
                     "price": abs(row["Montant gagné"])
                 })
 
@@ -343,179 +352,118 @@ class TradeRepublicFileExcelJson:
 
 
     #################### RENAME AND MOVE FILES ####################
-    def RenameAndMoveDepotRetraitArgentInteret(self, filePath: str, detailsFolder: str) -> None:
+    def ProcessPdf(self) -> None:
+        """
+        Parcourt les fichiers PDF dans un répertoire, puis utilise une fonction spécifiée pour traiter chaque fichier PDF et le déplacer.
+        """
+        
+        # Liste des opérations à effectuer
+        operations = [
+            {"directory": (directory + "Ordres d'achats/data"), "directoryRename": (directory + "Ordres d'achats"), "createFunction": self.RenameAndMoveOrdresAchats},
+            {"directory": (directory + "Dépôts d'argents/data"), "directoryRename": (directory + "Dépôts d'argents"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
+            {"directory": (directory + "Dividendes/data"), "directoryRename": (directory + "Dividendes"), "createFunction": self.RenameAndMoveDividendes},
+            {"directory": (directory + "Interets/data"), "directoryRename": (directory + "Interets"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
+            {"directory": (directory + "Retraits d'argents/data"), "directoryRename": (directory + "Retraits d'argents"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
+            {"directory": (directory + "Ordres de ventes/data"), "directoryRename": (directory + "Ordres de ventes/FacturesVentes"), "createFunction": self.RenameAndMoveOrdresVentes},
+        ]
+
+        for operation in operations:
+            nameDirectory = operation["directory"]
+            cheminDossierRenommer = operation["directoryRename"]
+            nameFunction = operation["createFunction"]
+
+            # Créer le répertoire de destination s'il n'existe pas
+            if not os.path.exists(cheminDossierRenommer):
+                os.makedirs(cheminDossierRenommer)
+
+            # Parcourir tous les fichiers dans le dossier spécifié
+            for fileName in os.listdir(nameDirectory):
+                # Vérifier si le fichier est un fichier PDF
+                if fileName.lower().endswith('.pdf'):
+                    filePath = os.path.join(nameDirectory, fileName)
+                    # Appeler la fonction spécifiée pour traiter et déplacer le fichier
+                    try:
+                        nameFunction(filePath, cheminDossierRenommer)
+                    except:
+                        nameFunction(filePath)
+
+    def RenameAndMoveDepotRetraitArgentInteret(self, filePath: str, DossierDestination: str) -> None:
         """
         Renomme et déplace un fichier PDF en fonction des informations extraites de son texte.
 
         Args:
             filePath: Le chemin complet du fichier PDF à renommer et déplacer.
-            detailsFolder: Le dossier où le fichier PDF sera déplacé après avoir été renommé.
-
-        Returns:
-            None
+            DossierDestination: Le dossier où le fichier PDF sera déplacé après avoir été renommé.
         """
-
-        # Assertions pour vérifier les types des arguments
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
-        assert isinstance(detailsFolder, str) and os.path.isdir(detailsFolder), f"Le dossier '{detailsFolder}' n'existe pas"
+        assert isinstance(DossierDestination, str) and os.path.isdir(DossierDestination), f"Le dossier '{DossierDestination}' n'existe pas"
 
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
+        date = datetime.strptime(self.ExtraireDonnee(text, r'DATE ((\d{2}/\d{2}/\d{4})|(\d{2}.\d{2}.\d{4}))', 1).replace(".", "/"), "%d/%m/%Y").strftime("%Y-%m-%d")
 
-        # Assertions pour vérifier que le texte a été extrait correctement
-        assert text is not None, "Le texte extrait du fichier PDF est None."
+        numero = 1
+        # Si on vend plusieurs fois la même action le même jour alors on rajoute un nombre +1
+        while os.path.exists(os.path.join(DossierDestination, date + " - " + str(numero) + ".pdf")):
+            numero += 1
+        NomFichierModifier = date + " - " + str(numero) + ".pdf"
 
-        # Extraire les informations nécessaires pour le renommage du fichier
-        dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
+        try:
+            # Déplacer et renommer le fichier dans le dossier Details
+            os.rename(filePath, os.path.join(DossierDestination, NomFichierModifier))
+        except Exception as e:
+            print(f"Une erreur s'est produite lors de l'enregistrement du fichier : {e}")
 
-        if dateMatch:
-            dateStr = dateMatch.group(1)
-            # Convertir la chaîne en objet datetime
-            dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-            # Reformatter la date dans le format "année/mois/jour"
-            nouvelleDateStr = dateObj.strftime("%Y/%m/%d")
-
-            # Créer le nouveau nom de fichier
-            newFileName = f"{nouvelleDateStr.replace('/', '-')}.pdf"
-
-            # Vérifier si le fichier existe déjà dans le dossier de destination
-            counter = 0
-            while os.path.exists(os.path.join(detailsFolder, newFileName)):
-                counter += 1
-                newFileName = f"{nouvelleDateStr.replace('/', '-')}_({counter}).pdf"
-
-            try:
-                # Déplacer et renommer le fichier dans le dossier Details
-                os.rename(filePath, os.path.join(detailsFolder, newFileName))
-            except Exception as e:
-                print(f"Une erreur s'est produite lors de l'enregistrement du fichier : {e}")
-        else:
-            raise ValueError(f"Impossible de renommer le fichier {filePath}. Informations de date manquantes.")
-
-    def RenameAndMoveDividendes(self, filePath, detailsFolder):
+    def RenameAndMoveDividendes(self, filePath, DossierDestination) -> None:
         """
         Renomme et déplace un fichier PDF en fonction des informations extraites du texte.
 
         Args:
             filePath: Chemin complet vers le fichier PDF à renommer.
-            detailsFolder: Dossier de destination où le fichier sera déplacé.
+            DossierDestination: Dossier de destination où le fichier sera déplacé.
         """
-
-        # Vérifiez que les chemins sont des chaînes de caractères
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
-        assert isinstance(detailsFolder, str) and os.path.isdir(detailsFolder), f"Le dossier '{detailsFolder}' n'existe pas"
+        assert isinstance(DossierDestination, str) and os.path.isdir(DossierDestination), f"Le dossier '{DossierDestination}' n'existe pas"
 
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
-        assert text, "Le texte extrait du fichier PDF est vide"
 
-        # Extraire les informations nécessaires pour le renommage du fichier
-        dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
-        dateMatch1 = re.search(r'DATE (\d{2}\.\d{2}\.\d{4})', text)
+        date = datetime.strptime(self.ExtraireDonnee(text, r'DATE ((\d{2}/\d{2}/\d{4})|(\d{2}.\d{2}.\d{4}))', 1).replace(".", "/"), "%d/%m/%Y").strftime("%Y-%m-%d")
+        ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
 
-        if dateMatch:
-            dateStr = dateMatch.group(1)
-            # Convertir la chaîne en objet datetime
-            dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-            # Reformatter la date dans le format "année/mois/jour"
-            nouvelleDateStr = dateObj.strftime("%Y/%m/%d")
-        elif dateMatch1:
-            dateStr = dateMatch1.group(1).replace(".", "/")
-            # Convertir la chaîne en objet datetime
-            dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-            # Reformatter la date dans le format "année/mois/jour"
-            nouvelleDateStr = dateObj.strftime("%Y/%m/%d")
-        else:
-            raise ValueError(f"Date non trouvée dans le fichier {filePath}")
-
-        # Recherche de la phrase spécifique
-        pattern = r'POSITION QUANTITÉ REVENU MONTANT\n(.*?)\n'
-        pattern1 = r'POSITION QUANTITÉ TAUX MONTANT\n(.*?)\n'
-        match = re.search(pattern, text, re.DOTALL)
-        match1 = re.search(pattern1, text, re.DOTALL)
-
-        if match:
-            nameTicker = match.group(1).strip()
-            if re.search(re.escape(" Inc."), nameTicker):
-                nameTicker = nameTicker[:-5]
-        elif match1:
-            nameTicker = match1.group(1).strip()
-            if re.search(re.escape(" Inc."), nameTicker):
-                nameTicker = nameTicker[:-5]
-        else:
-            raise ValueError(f"Nom du ticker non trouvé dans le fichier {filePath}")
-
-        # Vérifier si les informations nécessaires ont été trouvées
-        if not nouvelleDateStr:
-            raise ValueError(f"Date reformattée non trouvée pour le fichier {filePath}")
-        if not nameTicker:
-            raise ValueError(f"Nom du ticker non trouvé pour le fichier {filePath}")
-
-        # Créer le nouveau nom de fichier
-        newFileName = f"{nameTicker}_{nouvelleDateStr.replace('/', '-')}.pdf"
-
-        # Vérifier si le fichier existe déjà dans le dossier de destination
-        counter = 0
-        while os.path.exists(os.path.join(detailsFolder, newFileName)):
-            counter += 1
-            newFileName = f"{nameTicker}_{nouvelleDateStr.replace('/', '-')}_({counter}).pdf"
+        NomFichierModifier = f"{ticker} ({date}).pdf"
 
         try:
             # Déplacer et renommer le fichier dans le dossier de destination
-            os.rename(filePath, os.path.join(detailsFolder, newFileName))
+            os.rename(filePath, os.path.join(DossierDestination, NomFichierModifier))
         except Exception as e:
             print("Une erreur s'est produite lors de l'enregistrement du fichier :", e)
 
-    def RenameAndMoveOrdresAchats(self, filePath: str, detailsFolder: str) -> None:
+    def RenameAndMoveOrdresAchats(self, filePath: str, DossierDestination: str) -> None:
         """
         Extrait des informations d'un fichier PDF pour renommer et déplacer le fichier dans un autre répertoire.
 
         Args:
             filePath: Chemin complet du fichier PDF à renommer et déplacer.
-            detailsFolder: Chemin du répertoire où le fichier renommé sera déplacé.
-
-        Raises:
-            ValueError: Si la date ou le nom du ticker ne peut pas être trouvé dans le texte du PDF.
+            DossierDestination: Chemin du répertoire où le fichier renommé sera déplacé.
         """
-
-        # Assertions pour vérifier les types des entrées
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
-        assert isinstance(detailsFolder, str) and os.path.isdir(detailsFolder), f"Le dossier '{detailsFolder}' n'existe pas"
+        assert isinstance(DossierDestination, str) and os.path.isdir(DossierDestination), f"Le dossier '{DossierDestination}' n'existe pas"
 
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
 
-        # Extraire la date du texte
-        dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
-        if dateMatch:
-            dateStr = dateMatch.group(1)
-            # Convertir la chaîne en objet datetime
-            dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-            # Reformatter la date dans le format "année-mois-jour"
-            nouvelleDateStr = dateObj.strftime("%Y-%m-%d")
-        else:
-            raise ValueError(f"Date non trouvée dans le fichier {filePath}.")
+        date = datetime.strptime(self.ExtraireDonnee(text, r'DATE ((\d{2}/\d{2}/\d{4})|(\d{2}.\d{2}.\d{4}))', 1).replace(".", "/"), "%d/%m/%Y").strftime("%Y-%m-%d")
+        ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
 
-        # Extraire le nom du ticker
-        pattern = r'POSITION QUANTITÉ Cours moyen MONTANT\n(.*?)\n'
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            nameTicker = match.group(1).strip()
-            # Supprimer " Inc." du nom du ticker s'il est présent
-            if " Inc." in nameTicker:
-                nameTicker = nameTicker.replace(" Inc.", "")
-        else:
-            raise ValueError(f"Nom du ticker non trouvé dans le fichier {filePath}.")
-
-        # Créer le nouveau nom de fichier
-        newFileName = f"{nameTicker}_{nouvelleDateStr}.pdf"
+        NomFichierModifier = f"{ticker} ({date}).pdf"
         try:
-            # Déplacer et renommer le fichier dans le répertoire detailsFolder
-            os.rename(filePath, os.path.join(detailsFolder, newFileName))
+            # Déplacer et renommer le fichier dans le répertoire DossierDestination
+            os.rename(filePath, os.path.join(DossierDestination, NomFichierModifier))
         except Exception as e:
             print(f"Une erreur s'est produite lors du déplacement du fichier {filePath}: {e}")
 
-    def RenameAndMoveOrdresVentes(self, filePath: str, temp):
+    def RenameAndMoveOrdresVentes(self, filePath: str):
         """
         Renomme et déplace un fichier PDF basé sur les informations extraites du texte du fichier.
         Le nouveau nom de fichier est basé sur la date et le nom du ticker extraits du texte.
@@ -524,50 +472,33 @@ class TradeRepublicFileExcelJson:
         Args:
             filePath (str): Le chemin complet du fichier PDF à renommer et déplacer.
         """
-
-        # Assertions pour vérifier les types des arguments
         assert isinstance(filePath, str) and os.path.isfile(filePath), f"Le fichier '{filePath}' n'existe pas ou n'est pas une extension .pdf"
 
         # Extraire le texte du fichier PDF
         text = self.ExtractInformationPdf(filePath)
+        date = datetime.strptime(self.ExtraireDonnee(text, r'DATE (\d{2}/\d{2}/\d{4})', 1), "%d/%m/%Y").strftime("%Y-%m-%d")
+        ticker = self.ExtraireDonnee(text, r'(?:POSITION QUANTITÉ PRIX MONTANT|TITRE ORDRE / QUANTITÉ VALEUR)\s+([^\n]+)', 1)
 
-        # Extraire la date du texte
-        dateMatch = re.search(r'DATE (\d{2}/\d{2}/\d{4})', text)
-        assert dateMatch, f"Date non trouvée dans le texte du fichier {filePath}"
-        dateStr = dateMatch.group(1)
-        dateObj = datetime.strptime(dateStr, "%d/%m/%Y")
-        nouvelleDateStr = dateObj.strftime("%Y-%m-%d")
-
-        # Extraire le nom du ticker
-        targetPhrase = "TITRE ORDRE / QUANTITÉ VALEUR"
-        pattern = re.escape(targetPhrase) + r'(.*?)ISIN'
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            nameTicker = match.group(1).strip()
-        else:
-            targetPhrase = "POSITION QUANTITÉ PRIX MONTANT"
-            pattern = re.escape(targetPhrase) + r'\s+(\b\w+\b)'
-            match = re.search(pattern, text, re.DOTALL)
-            assert match, f"Nom du ticker non trouvé dans le texte du fichier {filePath}"
-            nameTicker = match.group(1).strip()
-
-        # Vérifier si les informations nécessaires ont été trouvées
-        assert nameTicker, f"Nom du ticker manquant dans le fichier {filePath}"
-        assert nouvelleDateStr, f"Date de renommage manquante pour le fichier {filePath}"
 
         # Déterminer le dossier de destination et le nom du fichier
         if re.search(re.escape("INFORMATIONS SUR LES COÛTS EX-ANTE DE LA VENTE DE TITRES"), text):
-            newFileName = f"{nameTicker}_{nouvelleDateStr}_Informations_sur_les_coûts.pdf"
-            detailsFolder = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
+            debutNomFichier = f"{ticker} ({date}) Informations sur les coûts "
+            DossierDestination = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
         else:
-            newFileName = f"{nameTicker}_{nouvelleDateStr}_Facture_Vente.pdf"
-            detailsFolder = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
+            debutNomFichier = f"{ticker} ({date}) Facture Vente "
+            DossierDestination = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
 
         # Assurer l'existence du dossier de destination
-        os.makedirs(detailsFolder, exist_ok=True)
+        os.makedirs(DossierDestination, exist_ok=True)
+
+        numero = 1
+        # Si on vend plusieurs fois la même action le même jour alors on rajoute un nombre +1
+        while os.path.exists(os.path.join(DossierDestination, debutNomFichier + str(numero) + ".pdf")):
+            numero += 1
+        NomFichierModifier = debutNomFichier + str(numero) + ".pdf"
 
         # Déplacer et renommer le fichier
-        newFilePath = os.path.join(detailsFolder, newFileName)
+        newFilePath = os.path.join(DossierDestination, NomFichierModifier)
         try:
             os.rename(filePath, newFilePath)
         except FileNotFoundError as e:
@@ -576,8 +507,6 @@ class TradeRepublicFileExcelJson:
             print(f"Erreur : Permission refusée pour {filePath}. Détails : {e}")
         except Exception as e:
             print(f"Erreur inattendue lors du déplacement de {filePath}. Détails : {e}")
-
-        print(f"Fichier renommé et déplacé de {filePath} vers {newFilePath}")
     ###############################################################
 
 
@@ -1050,38 +979,6 @@ class TradeRepublicFileExcelJson:
         return expressionReguliereCombinee
 
     @staticmethod
-    def ProcessPdf(nameDirectory: str, cheminDossierRenommer: str, nameFunction) -> None:
-        """
-        Parcourt les fichiers PDF dans un répertoire, puis utilise une fonction spécifiée pour traiter chaque fichier PDF et le déplacer.
-
-        Args:
-            nameDirectory: Chemin du répertoire contenant les fichiers PDF à traiter.
-            cheminDossierRenommer: Chemin du répertoire où les fichiers traités seront déplacés.
-            nameFunction: Fonction à appeler pour chaque fichier PDF. La fonction doit accepter deux arguments :
-                        - Le chemin complet du fichier PDF
-                        - Le chemin du répertoire de destination
-
-        Returns:
-            None
-        """
-        # Assertions pour vérifier les types des entrées
-        assert isinstance(nameDirectory, str), f"nameDirectory doit être une chaîne de caractères: {nameDirectory}"
-        assert isinstance(cheminDossierRenommer, str), f"cheminDossierRenommer doit être une chaîne de caractères: {cheminDossierRenommer}"
-        assert callable(nameFunction), f"nameFunction doit être une fonction: {nameFunction}"
-
-        # Créer le répertoire de destination s'il n'existe pas
-        if not os.path.exists(cheminDossierRenommer):
-            os.makedirs(cheminDossierRenommer)
-
-        # Parcourir tous les fichiers dans le dossier spécifié
-        for fileName in os.listdir(nameDirectory):
-            # Vérifier si le fichier est un fichier PDF
-            if fileName.lower().endswith('.pdf'):
-                filePath = os.path.join(nameDirectory, fileName)
-                # Appeler la fonction spécifiée pour traiter et déplacer le fichier
-                nameFunction(filePath, cheminDossierRenommer)
-
-    @staticmethod
     def ExtractInformationPdf(filePath: str) -> str:
         """
         Extrait le texte de chaque page d'un fichier PDF.
@@ -1099,17 +996,11 @@ class TradeRepublicFileExcelJson:
         text = ''
 
         try:
-            # Ouvrir le fichier PDF
-            with open(filePath, 'rb') as file:
-                reader = PdfReader(file)
-                # Extraire le texte de chaque page
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text
+            with pdfplumber.open(filePath) as pdf:
+                page = pdf.pages[0]
+                text = page.extract_text()
+            return text
         except Exception as e:
             print(f"Une erreur s'est produite lors de l'extraction du texte: {e}")
             return None
-
-        return text
     ################################################################
