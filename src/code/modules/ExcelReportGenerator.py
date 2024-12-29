@@ -17,22 +17,7 @@ class ExcelReportGenerator:
 
     Attributs:
         - `dataDict` (dict): Dictionnaire contenant les données à enregistrer et à analyser.
-        - `wb` (Workbook): Objet Workbook représentant le fichier Excel généré.
         - `outputFile` (str): Chemin du fichier Excel généré.
-
-    Méthodes:
-        - `__init__(self, dataDict)`: Initialise l'instance avec les données fournies et démarre le processus
-          de création du fichier Excel.
-        - `CreateFileExcel(self)`: Créer un fichier Excel.
-        - `AddInFileExcel(self)`: Formate les feuilles Excel, applique des styles et ouvre le fichier généré.
-        - `SheetBilan(self)`: Crée des bilans de revenus et de dépenses en les regroupant par sous-catégories.
-        - `ConvertDates(self)`: Convertit les chaînes de dates au format 'YYYY-MM-DD' en objets `datetime`.
-        - `InitializeDataFrame(self, columnNames, months)`: Initialise un DataFrame avec des colonnes représentant
-          les mois et des lignes pour les catégories de revenus ou de dépenses.
-        - `RevenueSubCategories(self, revenues)`: Crée un tableau des revenus par catégories et par mois.
-        - `ExpenseSubCategories(self, expenses)`: Crée un tableau des dépenses par catégories et par mois.
-        - `AddDataFrameToSheet(self, df, sheetName, startRow, spacing=5)`: Ajoute un DataFrame dans une feuille Excel
-          avec un formatage personnalisé.
     """
 
     def __init__(self, dataDict, outputFile):

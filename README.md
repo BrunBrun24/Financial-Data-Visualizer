@@ -6,7 +6,20 @@ Ce projet contient plusieurs classes Python conçues pour faciliter la gestion, 
 
 ### 1. `Graphique Plotly`
 
+**Problèmes**
+*Bourse*
+Lorsque l'on calcule les dataFrame pour la réplication de mon portefeuille il y a un problème pour les prixFIFO
+
+
 **Changement**
+*Bourse*
+Modifier l'affichage des graphiques en bourse
+
+*Patrimoine*
+Revoir les graphiques du patrimoine
+
+*Interface*
+Améliorer l'interface ainsi que la visualisation
 
 
 **Objectif Final**

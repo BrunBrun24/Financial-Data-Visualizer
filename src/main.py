@@ -1,4 +1,4 @@
-from code.mainBourse import CreateData, UpdateData
+from code.mainBourse import *
 from code.mainPatrimoine import GetPatrimoine
 from customtkinter import *
 import threading
@@ -6,7 +6,7 @@ import time
 
 
 class InterfaceGraphique:
-    def __init__(self) -> None:
+    def __init__(self):
         """
         Initialise l'interface graphique avec les différentes options de gestion.
         """
@@ -23,7 +23,7 @@ class InterfaceGraphique:
         # Démarrer la boucle principale de l'application
         self.app.mainloop()
 
-    def CreerMenu(self) -> None:
+    def CreerMenu(self):
         """
         Crée le menu principal avec les options pour mettre à jour les données,
         catégoriser les dépenses et afficher les graphiques.
@@ -39,11 +39,10 @@ class InterfaceGraphique:
         CTkLabel(master=self.frame_principal, text="Menu Principal", font=("Arial Bold", 24)).pack(pady=20)
 
         # Ajouter les boutons pour chaque action
-        CTkButton(master=self.frame_principal, text="Mettre à jour les données boursières", command=self.MettreAJourDonnees).pack(pady=10)
         CTkButton(master=self.frame_principal, text="Catégoriser les nouvelles dépenses", command=self.CategoriserDepenses).pack(pady=10)
         CTkButton(master=self.frame_principal, text="Visualiser les graphiques", command=self.AfficherGraphiques).pack(pady=10)
 
-    def AfficherGraphiques(self) -> None:
+    def AfficherGraphiques(self):
         """
         Affiche le sous-menu des graphiques à visualiser.
         """
@@ -59,8 +58,6 @@ class InterfaceGraphique:
         # Sous-menu pour les graphiques Bourse
         CTkLabel(master=self.frame_principal, text="Bourse", font=("Arial", 16)).pack(pady=10)
         CTkButton(master=self.frame_principal, text="Progression du portefeuille en %", command=self.GraphiquePourcentage).pack(pady=5)
-        CTkButton(master=self.frame_principal, text="Progression du portefeuille en €", command=self.GraphiqueEuro).pack(pady=5)
-        CTkButton(master=self.frame_principal, text="Répartition du portefeuille", command=self.GraphiqueRepartition).pack(pady=5)
 
         # Sous-menu pour les graphiques Banque
         CTkLabel(master=self.frame_principal, text="Banque", font=("Arial", 16)).pack(pady=10)
@@ -74,7 +71,7 @@ class InterfaceGraphique:
         # Ajouter un bouton pour retourner au menu principal
         CTkButton(master=self.frame_principal, text="Retour", command=self.CreerMenu).pack(pady=20)
 
-    def AfficherAnimation(self, action: str, fonction: callable, duree_estimee: int) -> None:
+    def AfficherAnimation(self, action: str, fonction: callable, duree_estimee: int):
         """
         Affiche une petite animation pendant l'exécution d'une fonction.
 
@@ -98,7 +95,7 @@ class InterfaceGraphique:
         thread = threading.Thread(target=self.ExecuterFonctionAvecAnimation, args=(fonction, duree_estimee))
         thread.start()
 
-    def ExecuterFonctionAvecAnimation(self, fonction: callable, duree_estimee: int) -> None:
+    def ExecuterFonctionAvecAnimation(self, fonction: callable, duree_estimee: int):
         """
         Exécute une fonction et anime l'étiquette pendant l'exécution.
 
@@ -127,38 +124,29 @@ class InterfaceGraphique:
         self.app.after(2000, self.CreerMenu)
 
     ########## Actions à faire ##########
-    def MettreAJourDonnees(self) -> None:
-        """
-        Action pour mettre à jour les données boursières.
-        """
-        self.AfficherAnimation("Mise à jour des données boursières en cours...", UpdateData, duree_estimee=5)
-
-    def CategoriserDepenses(self) -> None:
+    def CategoriserDepenses(self):
         """
         Action pour catégoriser les nouvelles dépenses.
         """
-        self.AfficherAnimation("Catégorisation des nouvelles dépenses en cours...", CreateData, duree_estimee=5)
+        self.AfficherAnimation("Catégorisation des nouvelles dépenses en cours...", CreateData, duree_estimee=2)
 
     # Fonctions pour les différents graphiques
-    def GraphiquePatrimoine(self) -> None:
+    def GraphiquePatrimoine(self):
         """
         Action pour afficher le patrimoine.
         """
-        self.AfficherAnimation("Affiche du patrimoine en cours...", GetPatrimoine, duree_estimee=5)
+        self.AfficherAnimation("Affiche du patrimoine en cours...", GetPatrimoine, duree_estimee=2)
 
-    def GraphiquePourcentage(self) -> None:
-        print("Affichage de la progression du portefeuille en pourcentage")
+    def GraphiquePourcentage(self):
+        """
+        Action pour afficher la progression du portefeuille en pourcentage
+        """
+        self.AfficherAnimation("Affichage de votre portefeuille en cours...", Portefeuille, duree_estimee=2)
 
-    def GraphiqueEuro(self) -> None:
-        print("Affichage de la progression du portefeuille en euro")
-
-    def GraphiqueRepartition(self) -> None:
-        print("Affichage de la répartition du portefeuille")
-
-    def GraphiqueLivretA(self) -> None:
+    def GraphiqueLivretA(self):
         print("Affichage des données du Livret A")
 
-    def GraphiqueCompteCourant(self) -> None:
+    def GraphiqueCompteCourant(self):
         print("Affichage des données du Compte Courant")
 
 # Point d'entrée pour lancer l'interface

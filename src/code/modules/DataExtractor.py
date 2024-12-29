@@ -18,20 +18,6 @@ class DataExtractor:
           Par défaut, défini sur "Bilan/Archives".
         - `filePath` (str): Chemin du fichier sélectionné par l'utilisateur.
         - `data` (pd.DataFrame ou dict): Contient les données extraites du fichier sélectionné.
-
-    Méthodes:
-        - `__init__(self, initialDir="Bilan/Archives")`: Initialise l'extracteur de données avec le répertoire de départ.
-        - `ExcelDateToDatetime(excelDate)`: Convertit une date au format Excel en objet `datetime`.
-        - `ExtractExcelData(self, filePath, extension)`: Extrait les données d'un fichier Excel et les formate en `DataFrame`.
-        - `CleanLine(text, startIndex, endText)`: Nettoie une ligne de texte en supprimant les informations inutiles.
-        - `LoadDictFromJson(filePath)`: Lit un fichier JSON et le convertit en dictionnaire.
-        - `OpenFileDialog(self, root)`: Ouvre une boîte de dialogue pour sélectionner un fichier.
-        - `SelectAndExtractData(self)`: Permet à l'utilisateur de sélectionner un fichier et extrait les données.
-        - `CenterWindow(window, width, height)`: Centre une fenêtre Tkinter à l'écran selon la largeur et la hauteur spécifiées.
-        - `UpdateDateOperation(df)`: Met à jour les dates dans la colonne 'DATE D'OPÉRATION' et nettoie le contenu de la colonne 'LIBELLÉ OPÉRATION' pour certains types d'opérations spécifiques.
-        - `ExtractDateFromLibelle(libelle)`: Extrait la date au format jj/mm/aaaa depuis la chaîne de caractères après 'DU'.
-        - `ExtractBetweenSlashes(text, start, end)`: Extrait le texte entre différentes positions des '/' dans une chaîne.
-        - `CleanLibelle(libelle)`: Nettoie le libellé en supprimant le texte après le premier double espace.
     """
     
     def __init__(self, initialDir="Bilan/Archives"):

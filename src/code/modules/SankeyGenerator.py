@@ -10,25 +10,6 @@ class SankeyGenerator:
     Attributs:
         - `dictionnaire` (dict): Dictionnaire contenant les données de transactions regroupées par catégories.
         - `title` (str): Titre du graphique Sankey.
-        - `labels` (list): Liste des labels (noms de catégories et types de transactions) pour les nœuds du graphique.
-        - `sources` (list): Liste des indices de départ pour les liens du graphique Sankey.
-        - `targets` (list): Liste des indices de destination pour les liens du graphique Sankey.
-        - `values` (list): Liste des valeurs des liens entre les nœuds.
-        - `labelDict` (dict): Dictionnaire pour mapper les labels aux indices des nœuds.
-        - `nextIndex` (int): Index suivant disponible pour l'ajout de nouveaux labels.
-        - `data` (dict): Données nettoyées et reformattées prêtes à être utilisées pour générer le graphique Sankey.
-        - `figure` (go.Figure): Graphique Sankey généré par Plotly.
-
-    Méthodes:
-        - `__init__(self, dictionnaire: dict, title="")`: Initialise le générateur de Sankey avec les données et le titre. Nettoie et reformate les données, puis génère le graphique Sankey.
-        - `CalculateTotals(transactionsList: list)`: Calcule les totaux des montants pour chaque type de transaction.
-        - `SumAmounts(transactions: dict)`: Calcule les sommes des montants pour chaque catégorie ou type.
-        - `GetLabelIndex(label: str) -> int`: Obtient l'index du label, en l'ajoutant si nécessaire.
-        - `ProcessExpenses()`: Traite les transactions lorsque les dépenses sont regroupées par catégories.
-        - `CleanTransactionsAndGroup() -> dict`: Nettoie les transactions en supprimant les clés non nécessaires et regroupe les transactions par catégorie.
-        - `AddTransactions(transactions, cle: str = None, depenses: bool = True)`: Ajoute les transactions au graphique Sankey en fonction de la catégorie et des types.
-        - `GenerateSankey()`: Génère le graphique Sankey à partir des transactions et des catégories.
-        - `GetFigure() -> go.Figure`: Renvoie le graphique Sankey généré.
     """
     
     def __init__(self, dictionnaire: dict, title=""):
@@ -54,7 +35,7 @@ class SankeyGenerator:
         self.GenerateSankey()
 
     @staticmethod
-    def CalculateTotals(transactionsList: list):
+    def CalculateTotals(transactionsList: list) -> dict:
         """
         Calcule les totaux des montants pour chaque type de transaction.
         """
@@ -70,7 +51,7 @@ class SankeyGenerator:
                 totals[typeOp] = montant
         return totals
 
-    def SumAmounts(self, transactions: dict):
+    def SumAmounts(self, transactions: dict) -> dict:
         """
         Calcule les sommes des montants pour chaque catégorie ou type.
         """
