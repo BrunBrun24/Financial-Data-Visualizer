@@ -34,19 +34,20 @@ class TradeRepublicPerformance:
         self.endDate = datetime.today()
         self.argentInvesti = self.CalculateNetInvestment()
 
-        self.pourcentageTickers = {}
+        self.tickersTWR = {}
         self.prixNetTickers = {}
         self.prixBrutTickers = {}
         self.dividendesTickers = {}
-        self.argentsCompteBancaire = pd.DataFrame()
-        self.pourcentageMoisPortefeuille = pd.DataFrame()
-        self.pourcentagePortefeuille = pd.DataFrame()
+        
+        self.portefeuilleTWR = pd.DataFrame()
         self.prixNetPortefeuille = pd.DataFrame()
-        self.argenstInvestis = pd.DataFrame()
+        self.pourcentagesMensuelsPortefeuille = pd.DataFrame()
+
+        self.fondsInvestis = pd.DataFrame()
+        self.soldeCompteBancaire = pd.DataFrame()
 
         # Ajoute sur le graphique mon portefeuille
         self.MonPortefeuille()
-
         self.EnregistrerDataFrameEnJson("Bilan/Archives/Bourse/Portefeuille.json")
 
     def RecuperationTickerBuySell(self, fichierJsonAchatsVentes: str, objectif: str) -> dict:
@@ -65,25 +66,25 @@ class TradeRepublicPerformance:
 
         data = self.ExtraireDonneeJson(fichierJsonAchatsVentes)
 
-        result = {}
+        transactionsDict = {}
         # Parcours des transactions pour chaque ticker
         for transaction in data.get('transactions', []):
             ticker = transaction.get('ticker')
             if ticker is None:
                 continue
 
-            result[ticker] = {}
+            transactionsDict[ticker] = {}
             # Extraction des données de transaction (dates et prix) en fonction de l'objectif
-            for ele in transaction.get(objectif, []):
-                date = ele.get('date')
-                price = ele.get('price')
+            for element in transaction.get(objectif, []):
+                date = element.get('date')
+                price = element.get('price')
                 if date is not None and price is not None:
-                    if pd.to_datetime(date) in result[ticker]:
-                        result[ticker][pd.to_datetime(date)] += price
+                    if pd.to_datetime(date) in transactionsDict[ticker]:
+                        transactionsDict[ticker][pd.to_datetime(date)] += price
                     else:
-                        result[ticker][pd.to_datetime(date)] = price
+                        transactionsDict[ticker][pd.to_datetime(date)] = price
 
-        return result
+        return transactionsDict
 
     def PremiereDateDepot(self) -> datetime:
         """
@@ -106,8 +107,8 @@ class TradeRepublicPerformance:
         Returns:
             float: La différence entre la somme des prix d'achat et la somme des prix de vente.
         """
-        assert isinstance(self.datesAchats, dict), "pricesBuy doit être un dictionnaire"
-        assert isinstance(self.datesVentes, dict), "pricesSell doit être un dictionnaire"
+        assert isinstance(self.datesAchats, dict), "datesAchats doit être un dictionnaire"
+        assert isinstance(self.datesVentes, dict), "datesVentes doit être un dictionnaire"
 
         totalBuy = 0.0
         totalSell = 0.0
@@ -523,92 +524,58 @@ class TradeRepublicPerformance:
 
         nomPortefeuille = "Mon Portefeuille"
 
-        prixMoyenAchat, quantiteTotale, montantsInvestis, montantsInvestisCumules, prixTickers = self.CalculerPrixMoyenPondereAchatMonPortefeuille()
+        montantsInvestis, montantsInvestisCumules, prixTickers = self.CalculerPrixMoyenPondereAchatMonPortefeuille()
 
         # Calcul des montants
         evolutionArgentsInvestisTickers, evolutionGainsPertesTickers = self.CalculerPlusMoinsValueComposeMonPortefeuille(montantsInvestis, prixTickers)
+        evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
+        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)
 
         # Calcul des pourcentages
         evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
         evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, self.argentInvesti)
         
         # On stock les DataFrames
-        self.pourcentagePortefeuille[nomPortefeuille] = evolutionPourcentagePortefeuille
-        self.prixNetPortefeuille[nomPortefeuille] = evolutionGainsPertesTickers.sum(axis=1)
-        self.argenstInvestis[nomPortefeuille] = evolutionArgentsInvestisTickers.sum(axis=1)
-        self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
+        self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
+        self.prixNetPortefeuille[nomPortefeuille] = evolutionGainsPertesPortefeuille
+        self.fondsInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
+        self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
         self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
         self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickers)
-        self.pourcentageMoisPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisTickers.sum(axis=1), self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
-        self.argentsCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisTickers.sum(axis=1) + self.CalculerPlusValuesEncaissees())
+        self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
+        self.soldeCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille + self.CalculerPlusValuesEncaissees())
 
-    def CalculerPrixMoyenPondereAchatMonPortefeuille(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def CalculerPrixMoyenPondereAchatMonPortefeuille(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Calcule les métriques essentielles pour le portefeuille, en tenant compte des achats et ventes effectués :
-        - Le prix moyen pondéré d'achat (PMPA) pour chaque ticker.
-        - La quantité totale d'actions détenues.
-        - Les montants investis initialement par ticker.
-        - Les montants investis cumulés.
-        - Les prix de clôture des tickers.
+        Calcule le prix moyen pondéré d'achat pour chaque ticker dans le portefeuille.
+        Cette méthode télécharge les prix de clôture pour chaque ticker, puis calcule le montant investi cumulé
+        pour chaque date d'achat.
 
         Returns:
-            tuple:
-                - pd.DataFrame: Prix moyen pondéré d'achat (PMPA) pour chaque date et ticker.
-                - pd.DataFrame: Quantités totales d'actions détenues pour chaque date et ticker.
-                - pd.DataFrame: Montants investis initialement pour chaque date et ticker.
-                - pd.DataFrame: Montants investis cumulés pour chaque date et ticker.
-                - pd.DataFrame: Prix de clôture des tickers pour chaque date.
-                
-        Notes :
-            - Les ventes sont traitées comme des réductions des quantités totales. Si une vente dépasse la quantité détenue,
-                la quantité est ramenée à 0, et le prix moyen pondéré est réinitialisé à 0.
-            - Les prix sont récupérés pour toutes les dates associées aux transactions et calculés sur la période pertinente.
+            tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+                - montantsInvestis : DataFrame des montants investis pour chaque ticker à chaque date d'achat.
+                - montantsInvestisCumules : DataFrame des montants investis cumulés pour chaque ticker.
+                - prixTickers : DataFrame des prix de clôture pour chaque ticker.
         """
 
         datesInvestissementsPrix = self.datesAchats.copy()
-        datesVentesPrix = self.datesVentes.copy()
 
         tickers = list(datesInvestissementsPrix.keys())
         # Télécharger les prix de clôture pour chaque ticker
         prixTickers = self.DownloadTickersPrice(tickers)
 
-        # Créer des DataFrames pour stocker les prix moyens pondérés d'achat, les quantités totales et les montants investis
-        prixMoyenAchat = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
-        quantiteTotale = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
         montantsInvestis = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
 
         # Calcul du prix moyen pondéré pour chaque date d'achat
         for ticker, datesInvestissements in datesInvestissementsPrix.items():
             # Vérifie si la date est dans le DataFrame des prix
             for date, montant in datesInvestissements.items():
-                # Pour chaque ticker, on calcule la quantité achetée et met à jour les prix et quantités cumulés
-                prix = prixTickers.at[date, ticker]
-                quantiteAchetee = montant / prix
-
-                quantiteTotale.loc[date:, ticker] += quantiteAchetee
-                prixMoyenAchat.loc[date:, ticker] += montant
                 montantsInvestis.at[date, ticker] = montant
 
+        montantsInvestisCumules = montantsInvestis.cumsum()
 
-            datesVentesPrixTicker = datesVentesPrix[ticker]
-            for date, montantVendue in datesVentesPrixTicker.items():
-                # Pour chaque ticker, on calcule la quantité vendue et met à jour les prix et quantités cumulés
-                prix = prixTickers.at[date, ticker]
-                quantiteVendue = montantVendue / prix
-
-                if (quantiteTotale.at[date, ticker] - quantiteVendue) > 0:
-                    quantiteTotale.loc[date:, ticker] -= quantiteVendue
-                else:
-                    quantiteTotale.loc[date:, ticker] = 0
-                    prixMoyenAchat.loc[date:, ticker] = 0
-
-        montantsInvestisCumules = prixMoyenAchat
-
-        # Calcul final du prix moyen pondéré d'achat pour chaque date
-        prixMoyenAchat = prixMoyenAchat.div(quantiteTotale).fillna(0)
-
-        return prixMoyenAchat, quantiteTotale, montantsInvestis, montantsInvestisCumules, prixTickers
+        return montantsInvestis, montantsInvestisCumules, prixTickers
 
     def CalculerPlusMoinsValueComposeMonPortefeuille(self, montantsInvestis: pd.DataFrame, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -773,41 +740,34 @@ class TradeRepublicPerformance:
 
             # Calcul des pourcentages
             evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
-            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, self.argentInvesti)
+            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, montantsInvestisCumules.iloc[-1].sum())
 
             # On stock les DataFrames
-            self.pourcentagePortefeuille[nomPortefeuille] = evolutionPourcentagePortefeuille
+            self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
             self.prixNetPortefeuille[nomPortefeuille] = evolutionGainsPertesPortefeuille
-            self.argenstInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
-            self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
+            self.fondsInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
+            self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
             self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
             self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
             self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickersFiltree)
-            self.pourcentageMoisPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), {})
-            self.argentsCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisTickers.sum(axis=1))
+            self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), {})
+            self.soldeCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille)
 
-    def CalculerPrixMoyenPondereAchatReplicationDeMonPortefeuille(self, prixTickers: pd.DataFrame, portefeuille: list) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def CalculerPrixMoyenPondereAchatReplicationDeMonPortefeuille(self, prixTickers: pd.DataFrame, portefeuille: list) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Calcule les métriques essentielles pour le portefeuille, en tenant compte des achats et ventes effectués :
-        - Le prix moyen pondéré d'achat (PMPA) pour chaque ticker.
-        - La quantité totale d'actions détenues.
-        - Les montants investis initialement par ticker.
-        - Les montants investis cumulés.
-        - Les prix de clôture des tickers.
-
+        Calcule le prix moyen pondéré d'achat en fonction des investissements et des ventes dans le portefeuille.
         Args:
-            prixTickers (pd.DataFrame): DataFrame contenant les prix des tickers pour chaque date.
-            portefeuille (list): Liste contenant la répartition des pourcentages d'investissement pour chaque ticker.
-
+            prixTickers (pd.DataFrame): DataFrame contenant les prix des tickers avec les dates en index.
+            portefeuille (list): Liste de dictionnaires représentant la répartition des investissements par ticker.
         Returns:
-            tuple:
-                - pd.DataFrame: Montants investis initialement pour chaque date et ticker.
-                - pd.DataFrame: Montants investis cumulés pour chaque date et ticker.
-                
-        Notes :
-            - Les ventes sont traitées comme des réductions des quantités totales. Si une vente dépasse la quantité détenue,
-                la quantité est ramenée à 0, et le prix moyen pondéré est réinitialisé à 0.
+            tuple[pd.DataFrame, pd.DataFrame]: 
+                - montantsInvestis (pd.DataFrame): DataFrame des montants investis par date et par ticker.
+                - montantsInvestisCumules (pd.DataFrame): DataFrame des montants investis cumulés par date et par ticker.
         """
+        assert isinstance(prixTickers, pd.DataFrame), "prixTickers doit être un DataFrame."
+        assert isinstance(portefeuille, list) and len(portefeuille) == 2, "portefeuille doit être une liste contenant un dictionnaire et une chaîne de caractère."
+        assert isinstance(portefeuille[0], dict), "Le premier élément de portefeuille doit être un dictionnaire."
+        assert isinstance(portefeuille[1], str), "Le deuxième élément de portefeuille doit être une chaîne de caractère (str)."
 
         datesInvestissementsPrix = self.SommeInvestissementParDate(self.datesAchats)
         datesVentesPrix = self.SommeInvestissementParDate(self.datesVentes)
@@ -826,15 +786,13 @@ class TradeRepublicPerformance:
                 argentVendu += datesVentesPrix[date]
 
             if date in datesInvestissements:
-                for ticker, repartitionPourcentage in portefeuille[0].items():
-                    montant = max(0, (datesInvestissementsPrix[date] - argentVendu))
+                montant = max(0, (datesInvestissementsPrix[date] - argentVendu))
+                # On met à jour l'argent vendu
+                argentVendu = max(0, (argentVendu - montant))
 
+                for ticker, repartitionPourcentage in portefeuille[0].items():
                     # Pour chaque ticker, on calcule la quantité achetée et met à jour les prix et quantités cumulés
                     montantAchete = (montant * repartitionPourcentage / 100)
-
-                    # On met à jour l'argent vendu
-                    argentVendu = max(0, (argentVendu - montantAchete))
-
                     montantsInvestis.at[date, ticker] = montantAchete
 
         montantsInvestisCumules = montantsInvestis.cumsum(axis=0)
@@ -863,7 +821,7 @@ class TradeRepublicPerformance:
             tickers = [ticker for ticker in portfolio[0].keys()]
             prixTickersFiltree = prixTickers.loc[:, prixTickers.columns.intersection(tickers)]
 
-            prixMoyenAchat, quantiteTotale, montantsInvestis, montantsInvestisCumules = self.CalculerPrixMoyenPondereAchatDollarCostAveraging(datesInvestissementsPrix, prixTickersFiltree, portfolio)
+            montantsInvestis, montantsInvestisCumules = self.CalculerPrixMoyenPondereAchatDollarCostAveraging(datesInvestissementsPrix, prixTickersFiltree, portfolio)
 
             # Calcul des montants
             evolutionArgentsInvestisTickers, evolutionGainsPertesTickers = self.CalculerPlusMoinsValueCompose(montantsInvestis, prixTickersFiltree)
@@ -875,15 +833,15 @@ class TradeRepublicPerformance:
             evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, self.argentInvesti)
 
             # On stock les DataFrames
-            self.pourcentagePortefeuille[nomPortefeuille] = evolutionPourcentagePortefeuille
+            self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
             self.prixNetPortefeuille[nomPortefeuille] = evolutionGainsPertesPortefeuille
-            self.argenstInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
-            self.pourcentageTickers[nomPortefeuille] = evolutionPourcentageTickers
+            self.fondsInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
+            self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
             self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
             self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
             self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickersFiltree)
-            self.pourcentageMoisPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, datesInvestissementsPrix, {})
-            self.argentsCompteBancaire[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
+            self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, datesInvestissementsPrix, {})
+            self.soldeCompteBancaire[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
 
     def DatesInvesissementDCA_DCV(self) -> list:
         """
@@ -921,35 +879,21 @@ class TradeRepublicPerformance:
         return sorted(debutMois)
     
     @staticmethod
-    def CalculerPrixMoyenPondereAchatDollarCostAveraging(datesInvestissementsPrix: dict, prixTickers: pd.DataFrame, portefeuille: list) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def CalculerPrixMoyenPondereAchatDollarCostAveraging(datesInvestissementsPrix: dict, prixTickers: pd.DataFrame, portefeuille: list) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Calcule les métriques clés pour un portefeuille d'actions :
-        - Le prix moyen pondéré d'achat (PMPA) par action pour chaque ticker.
-        - La quantité totale d'actions détenues par date.
-        - Les montants investis initialement par ticker et leur cumul par date.
+        Calcule le prix moyen pondéré d'achat en utilisant la méthode Dollar Cost Averaging.
 
         Args:
-            datesInvestissementsPrix (dict): 
-                Dictionnaire où :
-                    - Clés (datetime): Dates des investissements.
-                    - Valeurs (float): Montants investis à chaque date.
-            prixTickers (pd.DataFrame): 
-                DataFrame contenant les prix historiques des tickers.
-                    - Index : Dates (datetime).
-                    - Colonnes : Noms des tickers (str).
-                    - Valeurs : Prix par action pour chaque ticker à une date donnée.
-            portefeuille (list): 
-                Liste contenant deux éléments :
-                    - [0] (dict): Allocation en pourcentage pour chaque ticker. 
-                                Les clés sont les tickers (str) et les valeurs les pourcentages (float, entre 0 et 100).
-                    - [1] (str): Nom du portefeuille.
+            datesInvestissementsPrix (dict): Un dictionnaire où les clés sont des dates (datetime) et les valeurs sont des montants investis (int ou float).
+            prixTickers (pd.DataFrame): Un DataFrame contenant les prix des tickers avec les dates en index et les tickers en colonnes.
+            portefeuille (list): Une liste contenant deux éléments :
+                - Un dictionnaire où les clés sont des tickers et les valeurs sont les pourcentages du portefeuille alloués à chaque ticker.
+                - Une chaîne de caractère représentant une information supplémentaire (non utilisée dans cette fonction).
 
         Returns:
-            tuple: 
-                - pd.DataFrame: Prix moyen pondéré d'achat (PMPA) pour chaque ticker (index: dates, colonnes: tickers).
-                - pd.DataFrame: Quantités totales d'actions détenues par date pour chaque ticker (index: dates, colonnes: tickers).
-                - pd.DataFrame: Montants investis initialement pour chaque ticker (index: dates, colonnes: tickers).
-                - pd.DataFrame: Montants investis cumulés pour chaque ticker (index: dates, colonnes: tickers).
+            tuple[pd.DataFrame, pd.DataFrame]: Un tuple contenant deux DataFrames :
+                - Le premier DataFrame représente les montants investis pour chaque ticker à chaque date.
+                - Le deuxième DataFrame représente les montants investis cumulés pour chaque ticker à chaque date.
         """
         assert isinstance(datesInvestissementsPrix, dict), "datesInvestissementsPrix doit être un dictionnaire."
         assert all(isinstance(date, datetime) for date in datesInvestissementsPrix.keys()), "Les clés de datesInvestissementsPrix doivent être des instances datetime."
@@ -961,9 +905,6 @@ class TradeRepublicPerformance:
         assert isinstance(portefeuille[0], dict), "Le premier élément de portefeuille doit être un dictionnaire."
         assert isinstance(portefeuille[1], str), "Le deuxième élément de portefeuille doit être une chaîne de caractère (str)."
 
-        # Créer des DataFrames pour stocker les prix moyens pondérés d'achat, les quantités totales et les montants investis
-        prixMoyenAchat = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
-        quantiteTotale = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
         montantsInvestis = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
 
         # Calcul du prix moyen pondéré pour chaque date d'achat
@@ -971,19 +912,10 @@ class TradeRepublicPerformance:
             if date in prixTickers.index:  # Vérifier si la date est dans le DataFrame des prix
                 for ticker in prixTickers.columns:
                     ajouterArgentTicker = (montant * portefeuille[0][ticker] / 100)
-                    prix = prixTickers.at[date, ticker]
-                    quantiteAchetee = ajouterArgentTicker / prix
-
-                    quantiteTotale.loc[date:, ticker] += quantiteAchetee
-                    prixMoyenAchat.loc[date:, ticker] += ajouterArgentTicker
                     montantsInvestis.at[date, ticker] = ajouterArgentTicker
 
-        montantsInvestisCumules = prixMoyenAchat
-
-        # Calcul final du prix moyen pondéré d'achat
-        prixMoyenAchat = prixMoyenAchat.div(quantiteTotale).fillna(0)
-
-        return prixMoyenAchat, quantiteTotale, montantsInvestis, montantsInvestisCumules
+        montantsInvestisCumules = montantsInvestis.cumsum()
+        return montantsInvestis, montantsInvestisCumules
     #########################
     #######################################################
 
@@ -1007,17 +939,17 @@ class TradeRepublicPerformance:
         portefeuillesGraphiques = []
 
         # Ajout des graphiques
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.pourcentagePortefeuille, "Progression en pourcentage pour chaque portefeuille", "%"))
+        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.portefeuilleTWR, "Progression en TWR (pour l'argent investi) pour chaque portefeuille", "%"))
         portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.prixNetPortefeuille, "Progression en euro pour chaque portefeuille", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueHeatmapPourcentageParMois(self.pourcentageMoisPortefeuille))
-        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.pourcentageTickers, "Progression en pourcentage pour chaque ticker", "%"))
+        portefeuillesGraphiques.append(self.GraphiqueHeatmapPourcentageParMois(self.pourcentagesMensuelsPortefeuille))
+        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.tickersTWR, "Progression en TWR (pour l'argent investi) pour chaque ticker", "%"))
         portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.prixNetTickers, "Progression net en euro pour chaque ticker", "€"))
         portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.prixBrutTickers, "Progression brut en euro pour chaque ticker", "€"))
         portefeuillesGraphiques.append(self.GraphiqueDividendesParAction(self.dividendesTickers))
         portefeuillesGraphiques.append(self.GraphiqueTreemapPortefeuille(self.prixBrutTickers))
         portefeuillesGraphiques.append(self.GraphiqueSunburst(self.prixBrutTickers))
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.argenstInvestis, "Progression de l'argent investi", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.argentsCompteBancaire, "Progression de l'argent sur le Compte Bancaire", "€"))
+        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.fondsInvestis, "Progression de l'argent investi", "€"))
+        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.soldeCompteBancaire, "Progression de l'argent sur le Compte Bancaire", "€"))
 
         # Sauvegarde des graphiques dans un fichier HTML
         self.SaveInFile(portefeuillesGraphiques, (nomDossier + nomFichier))
@@ -1882,7 +1814,7 @@ class TradeRepublicPerformance:
         assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
             f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson)}."
 
-        dataFrame = copy.deepcopy(self.argentsCompteBancaire["Mon Portefeuille"])
+        dataFrame = copy.deepcopy(self.soldeCompteBancaire["Mon Portefeuille"])
 
         # Convertir l'index en dates au format string et les valeurs en dictionnaire
         dictData = dataFrame.reset_index()
