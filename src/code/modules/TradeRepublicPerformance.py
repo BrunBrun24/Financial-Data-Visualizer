@@ -47,6 +47,9 @@ class TradeRepublicPerformance:
         self.fondsInvestis = pd.DataFrame()
         self.soldeCompteBancaire = pd.DataFrame()
 
+        print(self.CalculateNetInvestment())
+        print(self.ArgentInitialementInvestiDCA())
+
         # Ajoute sur le graphique mon portefeuille
         self.MonPortefeuille()
         self.EnregistrerDataFrameEnJson("Bilan/Archives/Bourse/Portefeuille.json")
