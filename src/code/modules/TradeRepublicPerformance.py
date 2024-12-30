@@ -28,11 +28,12 @@ class TradeRepublicPerformance:
 
         self.repertoireJson = repertoireJson
 
-        self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "/Transactions.json"), "achats")
-        self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "/Transactions.json"), "ventes")
+        self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "/Argents investis.json"))
+        self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "/Argents vendus.json"))
+
         self.startDate = self.PremiereDateDepot()
         self.endDate = datetime.today()
-        self.argentInvesti = self.CalculateNetInvestment()
+        self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()))
 
         self.tickersTWR = {}
         self.prixNetTickers = {}
@@ -50,13 +51,12 @@ class TradeRepublicPerformance:
         self.MonPortefeuille()
         self.EnregistrerDataFrameEnJson("Bilan/Archives/Bourse/Portefeuille.json")
 
-    def RecuperationTickerBuySell(self, fichierJsonAchatsVentes: str, objectif: str) -> dict:
+    def RecuperationTickerBuySell(self, fichierJsonAchatsVentes: str) -> dict:
         """
         Récupère les données de transactions par ticker depuis un fichier JSON.
 
         Args:
             fichierJsonAchatsVentes (str): Chemin vers le fichier JSON contenant les transactions.
-            objectif (str): Clé dans le fichier JSON utilisée pour extraire les prix des transactions (ex: 'achats', 'ventes').
 
         Returns:
             dict: Un dictionnaire où chaque clé est un ticker, et chaque valeur est un dictionnaire contenant les dates et les prix.
@@ -65,26 +65,28 @@ class TradeRepublicPerformance:
         assert os.path.exists(fichierJsonAchatsVentes) and fichierJsonAchatsVentes.endswith('.json'), f"Le fichier {fichierJsonAchatsVentes} n'existe pas ou n'a pas l'extension .json."
 
         data = self.ExtraireDonneeJson(fichierJsonAchatsVentes)
+        result = {}
+        
+        # Parcours de chaque élément dans la liste de données
+        for entry in data:
+            ticker = entry["Ticker"]
+            dateExecution = pd.to_datetime(entry["Date d'exécution"])
 
-        transactionsDict = {}
-        # Parcours des transactions pour chaque ticker
-        for transaction in data.get('transactions', []):
-            ticker = transaction.get('ticker')
-            if ticker is None:
-                continue
-
-            transactionsDict[ticker] = {}
-            # Extraction des données de transaction (dates et prix) en fonction de l'objectif
-            for element in transaction.get(objectif, []):
-                date = element.get('date')
-                price = element.get('price')
-                if date is not None and price is not None:
-                    if pd.to_datetime(date) in transactionsDict[ticker]:
-                        transactionsDict[ticker][pd.to_datetime(date)] += price
-                    else:
-                        transactionsDict[ticker][pd.to_datetime(date)] = price
-
-        return transactionsDict
+            if fichierJsonAchatsVentes == (self.repertoireJson + "/Argents investis.json"):
+                montant = abs(entry["Montant investi"])  # On prend la valeur absolue du montant investi
+            else:
+                montant = abs(entry["Montant gagné"])
+            
+            # Si le ticker n'est pas encore dans le dictionnaire, on l'ajoute avec une valeur vide
+            if ticker not in result:
+                result[ticker] = {}
+            
+            if dateExecution in result[ticker]:
+                result[ticker][dateExecution] += montant
+            else:
+                result[ticker][dateExecution] = montant
+        
+        return {ticker: dict(sorted(dates.items())) for ticker, dates in result.items()}
 
     def PremiereDateDepot(self) -> datetime:
         """
@@ -102,7 +104,13 @@ class TradeRepublicPerformance:
 
     def CalculateNetInvestment(self) -> float:
         """
-        Calcule la somme totale des prix d'achat en soustrayant les prix de vente.
+        Calcule l'argent investi initialement.
+        
+        Il faut calculer la somme des montants investis pour chaque ticker à chaque date d'achat.
+        Puis on soustrait l'argent initialement investi du ticker s'il a été vendu.
+
+        Attention toutefois, si on vend un ticker et qu'il possède une ancienne date de vente.
+        Alors il faut calculer l'argent initialement investi entre la dernière date de vente et la date de vente actuelle.
 
         Returns:
             float: La différence entre la somme des prix d'achat et la somme des prix de vente.
@@ -113,19 +121,26 @@ class TradeRepublicPerformance:
         totalBuy = 0.0
         totalSell = 0.0
 
-        # Calculer le total des prix d'achat
-        for ticker, transactions in self.datesAchats.items():
-            assert isinstance(transactions, dict), f"Les transactions pour {ticker} doivent être un dictionnaire"
-            totalBuy += sum(transactions.values())
+        # Dictionnaire pour garder la trace de l'investissement restant pour chaque ticker
+        investments = {ticker: 0.0 for ticker in self.datesAchats.keys()}
 
-        # Calculer le total des prix de vente
-        for ticker, transactions in self.datesVentes.items():
-            assert isinstance(transactions, dict), f"Les transactions pour {ticker} doivent être un dictionnaire"
-            totalSell += sum(transactions.values())
+        # Calcul de l'argent investi initialement pour chaque ticker
+        for ticker, achats in self.datesAchats.items():
+            # Somme des prix d'achat
+            totalBuy += sum(achats.values())
+            investments[ticker] = sum(achats.values())
 
-        # Calculer la différence
+        # Calcul des ventes et ajustement de l'investissement pour chaque ticker
+        for ticker, dateVente in self.datesVentes.items():
+            if ticker in investments:
+                # Si l'action a été vendue, soustraire l'investissement
+                totalSell += investments[ticker]
+
+                # Après la vente, réinitialiser l'investissement pour cette action
+                investments[ticker] = 0.0
+
+        # Calcul de la différence entre l'argent investi et l'argent récupéré lors des ventes
         return totalBuy - totalSell
-
 
     #################### SETTERS ####################
     def SetPortfolioPercentage(self, portfolioPercentage: list):
@@ -140,6 +155,13 @@ class TradeRepublicPerformance:
                 assert isinstance(pourcentage, (int, float)), f"Chaque valeur du dictionnaire (pourcentage) doit être un nombre (int ou float), mais '{pourcentage}' ne l'est pas."
 
         self.portfolioPercentage = portfolioPercentage
+
+        tickersAll = sorted(set([ticker for portfolio in self.portfolioPercentage for ticker in portfolio[0].keys()]))
+        tickersInitial = sorted(list(self.prixTickers.columns))
+        tickerUnique = [item for item in tickersAll if item not in tickersInitial]
+
+        prixTickersUnique = self.DownloadTickersPrice(tickerUnique)
+        self.prixTickers = pd.concat([self.prixTickers, prixTickersUnique], axis=1)
     #################################################
 
 
@@ -329,25 +351,22 @@ class TradeRepublicPerformance:
         return evolutionPourcentageTickers
 
     @staticmethod
-    def CalculerEvolutionPourcentagePortefeuille(evolutionArgentsInvestisTickers: pd.DataFrame, argentInvesti: float) -> pd.DataFrame:
+    def CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesPortefeuille: pd.Series, argentInvesti: float) -> pd.Series:
         """
         Calcule l'évolution en pourcentage de la valeur totale du portefeuille par rapport à l'argent investi.
 
         Args:
-            evolutionArgentsInvestisTickers (pd.DataFrame): DataFrame contenant les valeurs globales des tickers dans le portefeuille, indexé par date.
+            evolutionGainsPertesPortefeuille (pd.Serie): Serie contenant les valeurs globales du portefeuille, indexé par date.
             argentInvesti (float): Montant total investi dans le portefeuille.
 
         Returns:
             pd.DataFrame: DataFrame contenant l'évolution en pourcentage de la valeur totale du portefeuille par rapport à l'argent investi.
         """
-        assert isinstance(evolutionArgentsInvestisTickers, pd.DataFrame), "evolutionArgentsInvestisTickers doit être un DataFrame"
+        assert isinstance(evolutionGainsPertesPortefeuille, pd.Series), "evolutionGainsPertesPortefeuille doit être une Serie"
         assert isinstance(argentInvesti, (int, float)), "argentInvesti doit être un nombre (int ou float)"
-        
-        # Calcul de la somme de toutes les lignes pour obtenir la valeur totale du portefeuille
-        valeurTotalePortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
  
         # Calcul de l'évolution en pourcentage par rapport à l'argent investi
-        evolutionPourcentage = (((argentInvesti + valeurTotalePortefeuille) - argentInvesti) / argentInvesti) * 100
+        evolutionPourcentage = (((argentInvesti + evolutionGainsPertesPortefeuille) - argentInvesti) / argentInvesti) * 100
 
         # Création d'un DataFrame pour retourner les résultats
         evolutionPourcentagePortefeuille = pd.DataFrame(evolutionPourcentage, columns=['EvolutionPourcentage'])
@@ -524,16 +543,16 @@ class TradeRepublicPerformance:
 
         nomPortefeuille = "Mon Portefeuille"
 
-        montantsInvestis, montantsInvestisCumules, prixTickers = self.CalculerPrixMoyenPondereAchatMonPortefeuille()
+        montantsInvestis, montantsInvestisCumules = self.CalculerPrixMoyenPondereAchatMonPortefeuille()
 
         # Calcul des montants
-        evolutionArgentsInvestisTickers, evolutionGainsPertesTickers = self.CalculerPlusMoinsValueComposeMonPortefeuille(montantsInvestis, prixTickers)
+        evolutionArgentsInvestisTickers, evolutionGainsPertesTickers = self.CalculerPlusMoinsValueComposeMonPortefeuille(montantsInvestis, self.prixTickers)
         evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
-        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)
+        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)# + self.CalculerPlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickers).cumsum(axis=0).sum(axis=1)
 
         # Calcul des pourcentages
         evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
-        evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, self.argentInvesti)
+        evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesPortefeuille, self.CalculateNetInvestment())
         
         # On stock les DataFrames
         self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
@@ -542,11 +561,11 @@ class TradeRepublicPerformance:
         self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
         self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
-        self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickers)
+        self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers)
         self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
-        self.soldeCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille + self.CalculerPlusValuesEncaissees())
+        self.soldeCompteBancaire[nomPortefeuille] = (self.CalculerEvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille + self.CalculerPlusValuesEncaisseesBrut())
 
-    def CalculerPrixMoyenPondereAchatMonPortefeuille(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def CalculerPrixMoyenPondereAchatMonPortefeuille(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Calcule le prix moyen pondéré d'achat pour chaque ticker dans le portefeuille.
         Cette méthode télécharge les prix de clôture pour chaque ticker, puis calcule le montant investi cumulé
@@ -556,14 +575,10 @@ class TradeRepublicPerformance:
             tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 - montantsInvestis : DataFrame des montants investis pour chaque ticker à chaque date d'achat.
                 - montantsInvestisCumules : DataFrame des montants investis cumulés pour chaque ticker.
-                - prixTickers : DataFrame des prix de clôture pour chaque ticker.
         """
 
         datesInvestissementsPrix = self.datesAchats.copy()
-
-        tickers = list(datesInvestissementsPrix.keys())
-        # Télécharger les prix de clôture pour chaque ticker
-        prixTickers = self.DownloadTickersPrice(tickers)
+        prixTickers = self.prixTickers
 
         montantsInvestis = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
 
@@ -574,8 +589,7 @@ class TradeRepublicPerformance:
                 montantsInvestis.at[date, ticker] = montant
 
         montantsInvestisCumules = montantsInvestis.cumsum()
-
-        return montantsInvestis, montantsInvestisCumules, prixTickers
+        return montantsInvestis, montantsInvestisCumules
 
     def CalculerPlusMoinsValueComposeMonPortefeuille(self, montantsInvestis: pd.DataFrame, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -605,7 +619,7 @@ class TradeRepublicPerformance:
 
         # Calcul de la plus-value composée pour chaque jour
         for ticker in prixTickers.columns:
-            datesVentesPrix = self.datesVentes[ticker]
+            datesVentesPrix = self.datesVentes[ticker] if ticker in self.datesVentes else {}
             
             # Initialiser avec la valeur d'achat initiale pour chaque ticker
             evolutionArgentsInvestisTickers.loc[prixTickers.index[0], ticker] = montantsInvestis.loc[prixTickers.index[0], ticker]
@@ -642,32 +656,63 @@ class TradeRepublicPerformance:
 
         return evolutionArgentsInvestisTickers, evolutionGainsPertesTickers
 
-    def CalculerPlusValuesEncaissees(self) -> pd.DataFrame:
+    def CalculerPlusValuesEncaisseesBrut(self) -> pd.Series:
         """
-        Calcule les plus-values réalisées sur une période donnée en tenant compte des opérations d'achat et de vente d'investissements.
+        Calcule les plus-values brut réalisées sur une période donnée en tenant compte des opérations d'achat et de vente d'investissements.
 
         Returns:
             pd.DataFrame: Un DataFrame indexé par une plage de dates, contenant les plus-values cumulées réalisées sur la période.
         """
         plageDates = pd.date_range(start=self.startDate, end=self.endDate)
-        plusValueRealisee = pd.Series(0.0, index=plageDates)
+        plusValueRealiseeBrut = pd.Series(0.0, index=plageDates)
         
         # Calcul des plus-values réalisées après la vente
         datesVentesDict = self.SommeInvestissementParDate(self.datesVentes)
         datesAchatsDict = self.SommeInvestissementParDate(self.datesAchats)
         datesVentesList = sorted(list(datesVentesDict.keys()))
         datesAchatsList = sorted(list(datesAchatsDict.keys()))
-
         datesAchatsVentesList = sorted(datesAchatsList + datesVentesList)
 
         for date in datesAchatsVentesList:
             if date in datesAchatsList:
-                plusValueRealisee.loc[date:] = max(0, (plusValueRealisee.at[date] - datesAchatsDict[date]))
+                plusValueRealiseeBrut.loc[date:] = max(0, (plusValueRealiseeBrut.at[date] - datesAchatsDict[date]))
 
             if date in datesVentesList:
-                plusValueRealisee.loc[date:] += datesVentesDict[date]
+                plusValueRealiseeBrut.loc[date:] += datesVentesDict[date]
 
-        return plusValueRealisee
+        return plusValueRealiseeBrut
+    
+    def CalculerPlusValuesEncaisseesNet(self) -> pd.Series:
+        """
+        Calcule les plus-values net réalisées sur une période donnée en tenant compte des opérations d'achat et de vente d'investissements.
+
+        Returns:
+            pd.DataFrame: Un DataFrame indexé par une plage de dates, contenant les plus-values cumulées réalisées sur la période.
+        """
+
+        datesAchats = self.datesAchats
+        datesVentes = self.datesVentes
+
+        plageDates = pd.date_range(start=self.startDate, end=self.endDate)
+        plusValueRealiseeNet = pd.Series(0.0, index=plageDates)
+        
+        # Récupérer toutes les dates de vente uniques
+        datesVentesList = sorted(set(dateVente for ventes in datesVentes.values() for dateVente in ventes.keys()))
+        tickerVentesList = sorted(set(ticker for ticker in datesVentes.keys()))
+
+        for dateVente in datesVentesList:
+            for ticker in tickerVentesList:
+                if dateVente in list(datesVentes[ticker].keys()):
+                    # Trouver la somme de l'argent investi avant la vente
+                    sommeInvestieAvantVente = 0
+                    for dateAchat, montant in datesAchats[ticker].items():
+                        if dateAchat <= dateVente:
+                            sommeInvestieAvantVente += montant
+
+                    # Calculer la plus-value nette réalisée
+                    plusValueRealiseeNet.loc[dateVente:] += datesVentes[ticker][dateVente] - sommeInvestieAvantVente
+
+        return plusValueRealiseeNet
     
     def CalculerEvolutionDepotEspeces(self) -> pd.Series:
         """
@@ -723,8 +768,7 @@ class TradeRepublicPerformance:
     def ReplicationDeMonPortefeuille(self):
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""
 
-        tickersAll = [ticker for portfolio in self.portfolioPercentage for ticker in portfolio[0].keys()]
-        prixTickers = self.DownloadTickersPrice(tickersAll)
+        prixTickers = self.prixTickers.copy()
 
         for portfolio in self.portfolioPercentage:
             nomPortefeuille = portfolio[-1] + " Réplication"
@@ -740,7 +784,7 @@ class TradeRepublicPerformance:
 
             # Calcul des pourcentages
             evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
-            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, montantsInvestisCumules.iloc[-1].sum())
+            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesPortefeuille, montantsInvestisCumules.iloc[-1].sum())
 
             # On stock les DataFrames
             self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
@@ -811,10 +855,9 @@ class TradeRepublicPerformance:
             réduisant l'impact des fluctuations du marché.
         """
 
-        tickersAll = [ticker for portfolio in self.portfolioPercentage for ticker in portfolio[0].keys()]
-        prixTickers = self.DownloadTickersPrice(tickersAll)
+        prixTickers = self.prixTickers.copy()
         datesInvestissements = self.DatesInvesissementDCA_DCV()
-        datesInvestissementsPrix = {date: (self.argentInvesti/len(datesInvestissements)) for date in datesInvestissements}
+        datesInvestissementsPrix = {date: (self.ArgentInitialementInvestiDCA()/len(datesInvestissements)) for date in datesInvestissements}
 
         for portfolio in self.portfolioPercentage:
             nomPortefeuille = portfolio[-1] + " DCA"
@@ -830,7 +873,7 @@ class TradeRepublicPerformance:
 
             # Calcul des pourcentages
             evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
-            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesTickers, self.argentInvesti)
+            evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesPortefeuille, montantsInvestisCumules.iloc[-1].sum())
 
             # On stock les DataFrames
             self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
@@ -916,6 +959,61 @@ class TradeRepublicPerformance:
 
         montantsInvestisCumules = montantsInvestis.cumsum()
         return montantsInvestis, montantsInvestisCumules
+    
+    def ArgentInitialementInvestiDCA(self) -> int|float:
+        """
+        Calcule l'argent investi initialement.
+        
+        Il faut calculer la somme des montants investis pour chaque ticker à chaque date d'achat.
+        Puis on soustrait l'argent initialement investi du ticker s'il a été vendu.
+
+        Attention toutefois, si on vend un ticker et qu'il possède une ancienne date de vente.
+        Alors il faut calculer l'argent initialement investi entre la dernière date de vente et la date de vente actuelle.
+
+        De plus il faut rajouter l'argent initialement investi des tickers qui sont vendus après la dernière date d'achats.
+
+        Returns:
+            int|float: La différence entre la somme des prix d'achat et la somme des prix de vente.
+        """
+        assert isinstance(self.datesAchats, dict), "datesAchats doit être un dictionnaire"
+        assert isinstance(self.datesVentes, dict), "datesVentes doit être un dictionnaire"
+
+        totalBuy = 0.0
+        totalSell = 0.0
+
+        # Dictionnaire pour garder la trace de l'investissement restant pour chaque ticker
+        investments = {ticker: 0.0 for ticker in self.datesAchats.keys()}
+
+        # Calcul de l'argent investi initialement pour chaque ticker
+        for ticker, achats in self.datesAchats.items():
+            # Somme des prix d'achat
+            totalBuy += sum(achats.values())
+            investments[ticker] = sum(achats.values())
+
+        # Calcul des ventes et ajustement de l'investissement pour chaque ticker
+        for ticker, dateVente in self.datesVentes.items():
+            if ticker in investments:
+                # Si l'action a été vendue, soustraire l'investissement
+                totalSell += investments[ticker]
+
+                # Après la vente, réinitialiser l'investissement pour cette action
+                investments[ticker] = 0.0
+
+
+        derniereDateAchat = max([date for tickerDates in self.datesAchats.values() for date in tickerDates.keys()])
+        tickerVentes = sorted(set(ticker for ticker in self.datesVentes.keys()))
+        argentEnPlus = 0
+        
+        for ticker, datesAchatsPrix in self.datesAchats.items():
+            if ticker in tickerVentes:
+                for dateVente in self.datesVentes[ticker].keys():
+
+                    if dateVente > derniereDateAchat:
+                        # Parcourir toutes les dates d'achat du ticker
+                        for dateAchat, montant in datesAchatsPrix.items():
+                            argentEnPlus += montant
+
+        return (totalBuy - totalSell + argentEnPlus)
     #########################
     #######################################################
 
