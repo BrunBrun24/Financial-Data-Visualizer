@@ -11,31 +11,38 @@ class OperationCategoriser:
     en utilisant une interface graphique Tkinter. Elle permet de charger des données depuis un DataFrame, 
     de configurer des boutons pour différentes catégories et sous-catégories, et de comparer et classer 
     les opérations en fonction des informations existantes dans un fichier JSON.
-
-    Attributs:
-        - `categories` (list): Liste des catégories uniques extraites du DataFrame.
-        - `buttonLabels` (dict): Dictionnaire des labels des boutons pour chaque catégorie.
-        - `cheminFileJson` (str): Chemin vers le fichier JSON contenant les opérations existantes.
-        - `buttonsPerRow` (int): Nombre de boutons à afficher sur une seule ligne dans la fenêtre.
     """
 
-    def __init__(self, data, buttonLabels, cheminFileJson, buttonsPerRow=5):
+    def __init__(self, data, cheminFileJson, buttonsPerRow=5):
         """
         Initialise les attributs de la classe.
 
         Args:
             data (DataFrame): DataFrame contenant les données à utiliser.
-            buttonLabels (dict): Dictionnaire des labels des boutons pour chaque catégorie.
             cheminFileJson (str): Chemin vers le fichier JSON contenant les opérations existantes.
             buttonsPerRow (int): Nombre de boutons que l'on veut afficher sur une seule ligne dans la fenêtre.
         """
-        assert isinstance(data, pd.DataFrame) and not data.empty, f"data doit être un DataFrame de Pandas non vide: {type(data).__name__}"
-        assert isinstance(buttonLabels, dict) and all(isinstance(mainCategorie, str) and isinstance(sousCategorie, list) and all(isinstance(item, str) for item in sousCategorie) for mainCategorie, sousCategorie in buttonLabels.items()), "buttonLabels doit être un dictionnaire avec des clés de type 'str' et des valeurs de type 'list[str]'."
+        assert isinstance(data, pd.DataFrame) and not data.empty, f"data doit être un DataFrame de Pandas non vide: {type(data)}"
         assert isinstance(cheminFileJson, str) and cheminFileJson.endswith(".json"), "Le chemin du fichier JSON doit être une chaîne de caractères se terminant par '.json'."
         assert isinstance(buttonsPerRow, int) and buttonsPerRow > 0, "buttonsPerRow doit être un entier positif."
 
         data['LIBELLÉ COURT'] = data['LIBELLÉ COURT'].fillna('Interet')
         data['TYPE OPÉRATION'] = data['TYPE OPÉRATION'].fillna('Interet')
+
+        buttonLabels = {
+            'Investissement': ["CTO", "Livret A", "Investissement - Autres"],
+            'Revenus': ["Aides et allocations", "Salaires et revenus d'activité", "Revenus de placement", "Pensions", "Intérêts", "Loyers", "Dividendes", "Remboursement", "Chèque reçu", "Déblocage emprunt", "Virement reçu", "Virement interne", "Cashback", "Revenus - Autres"],
+            'Abonnement': ["Téléphone", "Internet", "Streaming", "Logiciels"],
+            'Impôts': ["Impôt sur taxes", "Impôt sur le revenu", "Impôt sur la fortune", "Taxe foncière", "Taxe d'habitation", "Contribution sociales (CSG / CRDS)"],
+            'Banque': ["Epargne", "Remboursement emprumt", "Frais bancaires", "Prélèvement carte débit différé", "Retrait d'espèces", "Banques - Autres"],
+            "Logement": ["Logement - Autres", "Electricité, gaz", "Eau", "Chauffage", "Loyer", "Prêt Immobiler", "Bricolage et jardinage", "Assurance habitation", "Logement - Autres", "Mobilier, électroménager, déco"],
+            'Loisir et sorties': ["Voyages, vacances", "Restaurants - Bars", "Diversements, sortie culturelles", "Sports", "Soirée - Sortie", "Loisirs et sorties - Autres"],
+            'Santé': ["Medecin", "Pharmacie", "Dentiste", "Mutuelle", "Opticien", "Hôpital"],
+            'Transports et véhicules': ["Assurance véhicule", "Crédit auto", "Carburant", "Entretient véhicule", "Transport en commun", "Billet d'avion, Billet de train", "Taxi, VTC", "Location de véhicule", "Péage", "Stationnement"],
+            'Vie quotidienne': ["Alimentation - Supermarché", "Frais animaux", "Coiffeur, soins", "Habillement", "Achat, shopping", "Jeux Vidéo", "Frais postaux", "Achat multimédias - Hight tech", "Autres", "Aide-à-domicile", "Cadeaux", "Vie quotidienne - Autres"],
+            'Enfant(s)': ["Pension alimentaire", "Crèche, baby-sitter", "Scolarité, études", "Argent de poche", "Activités enfants"],
+        }
+        buttonLabels = {key: sorted(buttonLabels[key]) for key in sorted(buttonLabels.keys())}
 
         
         self.categories = data["LIBELLÉ COURT"].unique()
@@ -67,7 +74,7 @@ class OperationCategoriser:
             dict: Dictionnaire de DataFrames, où chaque clé est une valeur unique de 'LIBELLÉ COURT'.
         """
         # Vérifications des assertions
-        assert isinstance(donnees, pd.DataFrame), f"donnees doit être un DataFrame de Pandas: {type(donnees).__name__}"
+        assert isinstance(donnees, pd.DataFrame), f"donnees doit être un DataFrame de Pandas: {type(donnees)}"
         assert 'LIBELLÉ COURT' in donnees.columns, "Le DataFrame doit contenir la colonne 'LIBELLÉ COURT'."
 
         # Créer un dictionnaire vide pour stocker les DataFrames triés
@@ -87,9 +94,9 @@ class OperationCategoriser:
         Centre la fenêtre Tkinter sur l'écran.
         """
         # Vérifications des assertions
-        assert isinstance(self.root, tk.Tk), f"self.root doit être une instance de tk.Tk, mais c'est {type(self.root).__name__}."
-        assert isinstance(self.windowWidth, int) and self.windowWidth > 0, f"self.width doit être un entier positif, mais c'est {type(self.windowWidth).__name__} avec la valeur {self.windowWidth}."
-        assert isinstance(self.windowHeight, int) and self.windowHeight > 0, f"self.height doit être un entier positif, mais c'est {type(self.windowHeight).__name__} avec la valeur {self.windowHeight}."
+        assert isinstance(self.root, tk.Tk), f"self.root doit être une instance de tk.Tk, mais c'est {type(self.root)}."
+        assert isinstance(self.windowWidth, int) and self.windowWidth > 0, f"self.width doit être un entier positif, mais c'est {type(self.windowWidth)} avec la valeur {self.windowWidth}."
+        assert isinstance(self.windowHeight, int) and self.windowHeight > 0, f"self.height doit être un entier positif, mais c'est {type(self.windowHeight)} avec la valeur {self.windowHeight}."
 
         screenWidth = self.root.winfo_screenwidth()
         screenHeight = self.root.winfo_screenheight()
@@ -110,8 +117,8 @@ class OperationCategoriser:
             dict: Dictionnaire avec les éléments réorganisés.
         """
         # Vérifications des assertions
-        assert isinstance(item, dict), f"item doit être un dictionnaire, mais c'est {type(item).__name__}."
-        assert isinstance(index, int) and index >= 0, f"index doit être un entier non négatif, mais c'est {type(index).__name__} avec la valeur {index}."
+        assert isinstance(item, dict), f"item doit être un dictionnaire, mais c'est {type(item)}."
+        assert isinstance(index, int) and index >= 0, f"index doit être un entier non négatif, mais c'est {type(index)} avec la valeur {index}."
 
         keys = list(item.keys())
         
@@ -133,15 +140,15 @@ class OperationCategoriser:
             dict: Dictionnaire avec les éléments réorganisés.
         """
         # Vérification que 'dictionnaire' est un dictionnaire
-        assert isinstance(dictionnaire, dict), f"dictionnaire doit être un dictionnaire, mais c'est {type(dictionnaire).__name__}."
+        assert isinstance(dictionnaire, dict), f"dictionnaire doit être un dictionnaire, mais c'est {type(dictionnaire)}."
 
         for category, items in dictionnaire.items():
             # Vérification que chaque valeur est une liste
-            assert isinstance(items, list), f"Les valeurs du dictionnaire doivent être des listes, mais la valeur pour la clé '{category}' est de type {type(items).__name__}."
+            assert isinstance(items, list), f"Les valeurs du dictionnaire doivent être des listes, mais la valeur pour la clé '{category}' est de type {type(items)}."
 
             for item in items:
                 # Vérification que chaque élément dans les listes est un dictionnaire
-                assert isinstance(item, dict), f"Les éléments des listes doivent être des dictionnaires, mais un des éléments pour la clé '{category}' est de type {type(item).__name__}."
+                assert isinstance(item, dict), f"Les éléments des listes doivent être des dictionnaires, mais un des éléments pour la clé '{category}' est de type {type(item)}."
             
             # Réorganiser les éléments en utilisant la méthode ReorderKeys
             dictionnaire[category] = [self.ReorderKeys(item, 1) for item in items]
@@ -160,9 +167,9 @@ class OperationCategoriser:
         """
         # Vérifications des types des arguments
         assert isinstance(self.cheminFileJson, str) and self.cheminFileJson.endswith(".json"), \
-            f"cheminFileJson doit être une chaîne se terminant par '.json', mais c'est {type(self.cheminFileJson).__name__}."
+            f"cheminFileJson doit être une chaîne se terminant par '.json', mais c'est {type(self.cheminFileJson)}."
         assert isinstance(operationsActuelles, dict), \
-            f"operationsActuelles doit être un dictionnaire, mais c'est {type(operationsActuelles).__name__}."
+            f"operationsActuelles doit être un dictionnaire, mais c'est {type(operationsActuelles)}."
 
         # Vérification de l'existence du fichier JSON
         if os.path.exists(self.cheminFileJson):
@@ -175,7 +182,7 @@ class OperationCategoriser:
         dataframes = []
         for categorie, operations in operationsExistees.items():
             assert isinstance(operations, list), \
-                f"Les opérations pour la catégorie '{categorie}' doivent être une liste, mais c'est {type(operations).__name__}."
+                f"Les opérations pour la catégorie '{categorie}' doivent être une liste, mais c'est {type(operations)}."
             if operations:
                 df = pd.DataFrame(operations)
                 df['Catégorie'] = categorie
@@ -202,11 +209,11 @@ class OperationCategoriser:
         """
         # Vérifications des types des attributs
         assert isinstance(self.root, tk.Tk), \
-            f"self.root doit être une instance de tk.Tk, mais c'est {type(self.root).__name__}."
+            f"self.root doit être une instance de tk.Tk, mais c'est {type(self.root)}."
         assert hasattr(self, 'listesTypesOperation') and isinstance(self.listesTypesOperation, dict), \
-            f"self.listesTypesOperation doit être un dictionnaire, mais c'est {type(self.listesTypesOperation).__name__}."
+            f"self.listesTypesOperation doit être un dictionnaire, mais c'est {type(self.listesTypesOperation)}."
         assert hasattr(self, 'results') and isinstance(self.results, dict), \
-            f"self.results doit être un dictionnaire, mais c'est {type(self.results).__name__}."
+            f"self.results doit être un dictionnaire, mais c'est {type(self.results)}."
 
         # Définir le titre de la fenêtre
         self.root.title("Fenêtre avec Boutons et Affichage de Chaînes")
@@ -218,7 +225,7 @@ class OperationCategoriser:
         for cat, transactions in self.listesTypesOperation.items():
             for transaction in transactions:
                 assert isinstance(transaction, dict), \
-                    f"Chaque élément dans self.listesTypesOperation doit être un dictionnaire, mais c'est {type(transaction).__name__}."
+                    f"Chaque élément dans self.listesTypesOperation doit être un dictionnaire, mais c'est {type(transaction)}."
                 assert "DATE D'OPÉRATION" in transaction and isinstance(transaction["DATE D'OPÉRATION"], pd.Timestamp), \
                     f"Chaque transaction doit avoir une clé 'DATE D'OPÉRATION' avec une valeur de type pd.Timestamp"
                 
@@ -287,8 +294,9 @@ class OperationCategoriser:
                     afficherButton = self.ProcessSpecialCases(currentItem, currentList)
 
                     if afficherButton:
+                        print(currentItem)
                         # On affiche les détails de l'opération courante dans l'étiquette
-                        self.displayLabel.config(text=currentItem["LIBELLÉ OPÉRATION"] + "\n\n" + str(currentItem["MONTANT"]) + "€")
+                        self.displayLabel.config(text=currentItem["LIBELLÉ OPÉRATION"] + "\n\n" + str(currentItem["DATE D'OPÉRATION"]) + "   =>   " + str(currentItem["MONTANT"]) + "€")
 
                         # On filtre les boutons en fonction du montant de l'opération (revenus ou dépenses)
                         if currentItem["MONTANT"] >= 0:
@@ -368,7 +376,7 @@ class OperationCategoriser:
         assert buttonName in self.buttonLabels, f"'{buttonName}' n'est pas une catégorie valide."
         # Vérifie que la valeur associée à buttonName est une liste et non vide
         assert isinstance(self.buttonLabels[buttonName], list), \
-            f"La valeur associée à '{buttonName}' dans buttonLabels doit être une liste, mais c'est {type(self.buttonLabels[buttonName]).__name__}."
+            f"La valeur associée à '{buttonName}' dans buttonLabels doit être une liste, mais c'est {type(self.buttonLabels[buttonName])}."
         assert self.buttonLabels[buttonName], f"La liste des sous-catégories pour '{buttonName}' est vide."
 
 
@@ -409,8 +417,8 @@ class OperationCategoriser:
             parent_button_name (str): Le nom de la catégorie principale à laquelle appartient la sous-catégorie.
         """
         # Vérifie que sub_button_name et parent_button_name sont des chaînes de caractères
-        assert isinstance(sub_button_name, str), f"sub_button_name doit être une chaîne de caractères, mais c'est {type(sub_button_name).__name__}."
-        assert isinstance(parent_button_name, str), f"parent_button_name doit être une chaîne de caractères, mais c'est {type(parent_button_name).__name__}."
+        assert isinstance(sub_button_name, str), f"sub_button_name doit être une chaîne de caractères, mais c'est {type(sub_button_name)}."
+        assert isinstance(parent_button_name, str), f"parent_button_name doit être une chaîne de caractères, mais c'est {type(parent_button_name)}."
 
         # Traite la sous-catégorie et la catégorie principale associée
         self.ProcessSubButton(sub_button_name, parent_button_name)
@@ -427,7 +435,7 @@ class OperationCategoriser:
         et retire l'entrée correspondante des résultats.
         """
         # Vérifie que l'historique est une liste
-        assert isinstance(self.history, list), f"self.history doit être une liste, mais c'est {type(self.history).__name__}."
+        assert isinstance(self.history, list), f"self.history doit être une liste, mais c'est {type(self.history)}."
 
         if self.history:
             # Récupère le dernier état de l'historique
@@ -453,11 +461,11 @@ class OperationCategoriser:
         L'affichage est ensuite mis à jour pour refléter la nouvelle entrée.
         """
         # Vérifie que self.index et self.categoryIndex sont des entiers
-        assert isinstance(self.index, int) and self.index >= 0, f"self.index doit être un entier positif ou zéro, mais c'est {type(self.index).__name__}."
-        assert isinstance(self.categoryIndex, int) and self.categoryIndex >= 0, f"self.categoryIndex doit être un entier positif ou zéro, mais c'est {type(self.categoryIndex).__name__}."
+        assert isinstance(self.index, int) and self.index >= 0, f"self.index doit être un entier positif ou zéro, mais c'est {type(self.index)}."
+        assert isinstance(self.categoryIndex, int) and self.categoryIndex >= 0, f"self.categoryIndex doit être un entier positif ou zéro, mais c'est {type(self.categoryIndex)}."
 
         # Vérifie que self.listesTypesOperation et self.categories sont des listes et que la catégorie actuelle existe
-        assert isinstance(self.listesTypesOperation, dict), f"self.listesTypesOperation doit être un dictionnaire, mais c'est {type(self.listesTypesOperation).__name__}."
+        assert isinstance(self.listesTypesOperation, dict), f"self.listesTypesOperation doit être un dictionnaire, mais c'est {type(self.listesTypesOperation)}."
         assert self.categoryIndex < len(self.categories), f"self.categoryIndex {self.categoryIndex} est hors des limites de self.categories."
 
         # Passe à l'entrée suivante
@@ -489,7 +497,7 @@ class OperationCategoriser:
             AssertionError: Si les indices ou les structures de données ne sont pas dans des plages valides.
         """
         # Vérifie que buttonName est une chaîne de caractères
-        assert isinstance(buttonName, str), f"buttonName doit être une chaîne de caractères, mais c'est {type(buttonName).__name__}."
+        assert isinstance(buttonName, str), f"buttonName doit être une chaîne de caractères, mais c'est {type(buttonName)}."
 
         # Vérifie que self.categoryIndex est dans les limites de la liste des catégories
         assert isinstance(self.categoryIndex, int) and 0 <= self.categoryIndex < len(self.categories), \
@@ -506,7 +514,7 @@ class OperationCategoriser:
             current_row = current_list[self.index]
             
             # Vérifie que self.results est un dictionnaire
-            assert isinstance(self.results, dict), f"self.results doit être un dictionnaire, mais c'est {type(self.results).__name__}."
+            assert isinstance(self.results, dict), f"self.results doit être un dictionnaire, mais c'est {type(self.results)}."
             
             # Ajoute la ligne courante à la catégorie sélectionnée dans les résultats
             if buttonName not in self.results:
@@ -542,8 +550,8 @@ class OperationCategoriser:
             AssertionError: Si les indices ou les structures de données ne sont pas dans des plages valides.
         """
         # Vérifie que sub_button_name et parent_button_name sont des chaînes de caractères
-        assert isinstance(sub_button_name, str), f"sub_button_name doit être une chaîne de caractères, mais c'est {type(sub_button_name).__name__}."
-        assert isinstance(parent_button_name, str), f"parent_button_name doit être une chaîne de caractères, mais c'est {type(parent_button_name).__name__}."
+        assert isinstance(sub_button_name, str), f"sub_button_name doit être une chaîne de caractères, mais c'est {type(sub_button_name)}."
+        assert isinstance(parent_button_name, str), f"parent_button_name doit être une chaîne de caractères, mais c'est {type(parent_button_name)}."
 
         # Vérifie que self.categoryIndex est dans les limites de la liste des catégories
         assert isinstance(self.categoryIndex, int) and 0 <= self.categoryIndex < len(self.categories), \
@@ -560,7 +568,7 @@ class OperationCategoriser:
             current_row = current_list[self.index]
             
             # Vérifie que self.results est un dictionnaire
-            assert isinstance(self.results, dict), f"self.results doit être un dictionnaire, mais c'est {type(self.results).__name__}."
+            assert isinstance(self.results, dict), f"self.results doit être un dictionnaire, mais c'est {type(self.results)}."
             
             # Assure que parent_button_name est bien une clé dans self.results
             if parent_button_name not in self.results:
@@ -600,7 +608,7 @@ class OperationCategoriser:
             False: Si une catégorisation a été faite, on renvoie False pour ne pas afficher les boutons
         """
         # Vérifie que currentItem est un dictionnaire et contient les clés nécessaires
-        assert isinstance(currentItem, dict), f"currentItem doit être un dictionnaire, mais c'est {type(currentItem).__name__}."
+        assert isinstance(currentItem, dict), f"currentItem doit être un dictionnaire, mais c'est {type(currentItem)}."
         assert 'MONTANT' in currentItem and isinstance(currentItem['MONTANT'], (int, float)), \
             f"currentItem doit contenir une clé 'MONTANT' avec une valeur de type int ou float, mais c'est {type(currentItem.get('MONTANT', 'clé manquante'))}."
         assert 'LIBELLÉ COURT' in currentItem and isinstance(currentItem['LIBELLÉ COURT'], str), \

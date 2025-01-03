@@ -1,3 +1,5 @@
+from .dateExecutionTkinter import DateExecutionTkinter
+
 import pandas as pd
 import os
 import re
@@ -9,16 +11,13 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
+from openpyxl import load_workbook
 
 
 class TradeRepublicFileExcelJson:
     """
     La classe TradeRepublicFileExcelJson est conçue pour analyser les données du courtier Trade République via les fichiers PDF téléchargés,
     et créer un fichier Excel et des fichiers JSON avec ces données.
-
-    Attributs :
-        - directoryData : Chemin du répertoire de données contenant les fichiers PDF.
-        - tickerMapping : Dictionnaire pour mapper les tickers avec des informations supplémentaires.
     """
 
     def __init__(self, directoryData: str, tickerMapping: dict):
@@ -28,24 +27,24 @@ class TradeRepublicFileExcelJson:
         Args:
             directoryData (str): Chemin du répertoire de données contenant les fichiers PDF.
             tickerMapping (dict): Un dictionnaire pour mapper les tickers avec des informations supplémentaires.
-
-        Raises:
-            AssertionError: Si directoryData n'est pas une chaîne, n'existe pas ou n'est pas un répertoire.
         """
-        assert isinstance(directoryData, str), f"directoryData doit être une chaîne: {type(directoryData)}."
+        assert isinstance(directoryData, str), f"directoryData doit être une chaîne de caractère: {type(directoryData)}."
         assert os.path.exists(directoryData), f"Le fichier ou le dossier '{directoryData}' n'existe pas."
         assert os.path.isdir(directoryData), f"'{directoryData}' n'est pas un dossier."
         assert isinstance(tickerMapping, dict), f"mappingTickers doit être un dictionnaire: ({type(tickerMapping)})"
 
-        self.directoryData = directoryData
-        self.tickerMapping = tickerMapping
+        self.directoryDataPdf = directoryData + "pdf/"
+        self.directoryDataJson = directoryData + "json/"
 
+        assert os.path.exists(self.directoryDataPdf), f"Le dossier '{self.directoryDataPdf}' n'existe pas."
+        assert os.path.exists(self.directoryDataJson), f"Le dossier '{self.directoryDataJson}' n'existe pas."
+
+        self.tickerMapping = tickerMapping
         self.ProcessPdf()
 
 
-
     #################### MAIN ####################
-    def DownloadDataAndCreateFileExcel(self, cheminEnregistrementFichier: str):
+    def CreateFileExcelJson(self, cheminEnregistrementFichier: str):
         """
         Crée un récapitulatif des gains en générant un classeur Excel avec plusieurs feuilles pour différents types de données financières.
         Les feuilles sont créées à partir de fichiers PDF spécifiques dans le dossier spécifié.
@@ -53,45 +52,42 @@ class TradeRepublicFileExcelJson:
         Args:
             cheminEnregistrementFichier (str): Chemin où le fichier Excel sera enregistré.
         """
-        assert isinstance(cheminEnregistrementFichier, str), \
-            f"cheminEnregistrementFichier doit être une chaîne: {type(cheminEnregistrementFichier)}."
+        assert isinstance(cheminEnregistrementFichier, str), f"cheminEnregistrementFichier doit être une chaîne: {type(cheminEnregistrementFichier)}."
 
-        buySell = []
-        # Créez un classeur Excel
-        workbook = Workbook()
-        # Supprime la feuille par défaut "Sheet"
-        sheetToDelete = workbook["Sheet"]
-        workbook.remove(sheetToDelete)
+        # Vérifier si le fichier Excel existe déjà
+        if os.path.exists(cheminEnregistrementFichier):
+            workbook = load_workbook(cheminEnregistrementFichier)
+        else:
+            workbook = Workbook()
+            # Supprime la feuille par défaut "Sheet"
+            if "Sheet" in workbook.sheetnames:
+                sheetToDelete = workbook["Sheet"]
+                workbook.remove(sheetToDelete)
 
         # L'ordre dans le dictionnaire définit la continuité des feuilles dans le fichier Excel
         operations = [
-            {"nomFichier": "Ordres d'achats", "data": self.DataOrdresAchats, "fileJson": "Bilan/Archives/Bourse/Argents investis.json"},
-            {"nomFichier": "Ordres de ventes/FacturesVentes", "data": self.DataOrdresVentes, "fileJson": "Bilan/Archives/Bourse/Argents vendus.json"},
-            {"nomFichier": "Dépôts d'argents", "data": self.DataDepotArgent, "fileJson": "Bilan/Archives/Bourse/Dépôts d'espèces.json"},
-            {"nomFichier": "Dividendes", "data": self.DataDividendes, "fileJson": "Bilan/Archives/Bourse/Dividendes.json"},
-            {"nomFichier": "Interets", "data": self.DataInteret, "fileJson": "Bilan/Archives/Bourse/Interêts.json"},
-            {"nomFichier": "Retraits d'argents", "data": self.DataRetraitArgent, "fileJson": "Bilan/Archives/Bourse/Retraits.json"},
+            {"nomFichier": "Ordres d'achats", "funct": self.DataOrdresAchats, "fileJson": f"{self.directoryDataJson}Ordres d'achats.json"},
+            {"nomFichier": "Ordres de ventes/FacturesVentes", "funct": self.DataOrdresVentes, "fileJson": f"{self.directoryDataJson}Ordres de ventes.json"},
+            {"nomFichier": "Dépôts d'espèces", "funct": self.DataDepotArgent, "fileJson": f"{self.directoryDataJson}Dépôts d'espèces.json"},
+            {"nomFichier": "Dividendes", "funct": self.DataDividendes, "fileJson": f"{self.directoryDataJson}Dividendes.json"},
+            {"nomFichier": "Interêts", "funct": self.DataInteret, "fileJson": f"{self.directoryDataJson}Interêts.json"},
+            {"nomFichier": "Retraits d'argents", "funct": self.DataRetraitArgent, "fileJson": f"{self.directoryDataJson}Retraits d'espèces.json"},
         ]
 
         # Boucle pour traiter chaque type de donnée et créer les feuilles Excel correspondantes
         for operation in operations:
-            nomFichier = self.directoryData + operation["nomFichier"]
+            nomFichier = self.directoryDataPdf + operation["nomFichier"]
             filesPdf = self.GetPdfFilesFromFolder(nomFichier)
 
-            dataFrame, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau = operation["data"](filesPdf, nomFichier)
+            dataFrame, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau = operation["funct"](filesPdf, nomFichier, operation["fileJson"])
             dataFrame.columns = [col.capitalize() for col in dataFrame.columns]
-            self.PutDataFrameSheetExcel(workbook=workbook, nomFeuille=nomFeuille, df=dataFrame, colonnesEuros=colonnesEuros, colonnesPourcentages=colonnesPourcentages, colonnesDates=colonnesDates, appliquerTableau=appliquerTableau)
-            self.SaveDataFrameAsJson(dataFrame, operation["fileJson"])
+            if dataFrame is not None and not dataFrame.empty:
+                self.PutDataFrameSheetExcel(workbook=workbook, nomFeuille=nomFeuille, df=dataFrame, colonnesEuros=colonnesEuros, colonnesPourcentages=colonnesPourcentages, colonnesDates=colonnesDates, appliquerTableau=appliquerTableau)
+                self.SaveDataFrameAsJson(dataFrame, operation["fileJson"])
 
-            if operation["nomFichier"] in ["Ordres d'achats", "Ordres de ventes/FacturesVentes"]:
-                buySell.append(dataFrame)
-
-
-        self.SaveTransactionsToJson(buySell, "Bilan/Archives/Bourse/Transactions.json")
         # Enregistrez le fichier Excel
         workbook.save(cheminEnregistrementFichier)
     ##############################################
-
 
 
     #################### JSON ####################
@@ -134,78 +130,50 @@ class TradeRepublicFileExcelJson:
         # Convertir le DataFrame en JSON
         jsonData = dataFrameCopy.to_json(orient="records", force_ascii=False, indent=4)
 
-        # Enregistrer le JSON dans le fichier
-        with open(pathJson, 'w', encoding="utf-8") as f:
-            f.write(jsonData)
+        # Vérifier si le fichier JSON existe déjà
+        try:
+            with open(pathJson, 'r', encoding="utf-8") as f:
+                # Si le fichier existe, on charge son contenu
+                existingData = json.load(f)
+                # Ajouter les nouvelles données aux données existantes
+                newData = json.loads(jsonData)
+                existingData.extend(newData)
+        except FileNotFoundError:
+            # Si le fichier n'existe pas, on commence avec un tableau vide
+            existingData = json.loads(jsonData)
 
-    def SaveTransactionsToJson(self, dataFrames: list, pathJson: str):
+        # Enregistrer les données mises à jour dans le fichier JSON
+        with open(pathJson, 'w', encoding="utf-8") as f:
+            json.dump(existingData, f, ensure_ascii=False, indent=4)
+
+    def DateRecente(self, nomFichier: str, nomColonne: str) -> datetime|None:
         """
-        Enregistre les transactions d'achats et de ventes dans un fichier JSON structuré, avec correction des tickers.
+        Retourne la date la plus récente d'une colonne spécifique dans un fichier JSON téléchargé.
+
+        Cette fonction télécharge les données d'un fichier JSON, vérifie si la colonne spécifiée existe, 
+        convertit la colonne des dates au format datetime et retourne la date la plus récente de cette colonne.
 
         Args:
-            dataFrames (list): Liste contenant deux DataFrames, l'un pour les achats, l'autre pour les ventes.
-            pathJson (str): Chemin où sauvegarder le fichier JSON.
+            nomFichier (str): Le nom du fichier JSON contenant les données.
+            nomColonne (str): Le nom de la colonne contenant les dates à analyser.
+
+        Returns:
+            datetime|None: La date la plus récente dans la colonne spécifiée, ou None si les données sont vides 
+            ou si la colonne n'existe pas.
         """
-        # Vérifications des types des arguments
-        assert isinstance(dataFrames, list) and len(dataFrames) == 2, \
-            f"dataFrames doit être une liste contenant deux DataFrames: {type(dataFrames)}."
-        assert isinstance(pathJson, str) and pathJson.endswith(".json"), \
-            f"pathJson doit être une chaîne se terminant par '.json': {type(pathJson)}."
+        # Assertion pour vérifier que `nomColonne` est une chaîne de caractères
+        assert isinstance(nomFichier, str), f"nomFichier doit être une chaîne de caractère: {type(nomFichier)}."
+        assert isinstance(nomColonne, str), f"nomColonne doit être une chaîne de caractère: {type(nomColonne)}."
+
+        data = self.DownloadDataJson(nomFichier)
+        if data is not None and not data.empty:
+            assert (nomColonne in data.columns), f"{nomColonne} n'est pas dans les colonnes du DataFrame"
+            # Convertir chaque valeur de la colonne au format date
+            data[nomColonne] = data[nomColonne].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").date())
+            return max(data[nomColonne])
         
-        tickerMapping = self.tickerMapping.copy()
-        achats, ventes = dataFrames
+        return None
 
-        # Normalisation des clés du dictionnaire de mapping en minuscules
-        tickerMapping = {key.lower(): value for key, value in tickerMapping.items()}
-
-        # Création d'un motif pour rechercher les noms d'entreprises dans les tickers
-        pattern = re.compile('|'.join(re.escape(key) for key in tickerMapping.keys()), re.IGNORECASE)
-
-        # Format JSON pour les transactions
-        transactions = []
-
-        # Concaténer achats et ventes pour obtenir tous les tickers uniques
-        tickers = sorted(set(achats["Ticker"]).union(set(ventes["Ticker"])))
-
-        for ticker in tickers:
-            # Filtrer les transactions pour ce ticker
-            achatDf = achats[achats["Ticker"] == ticker]
-            venteDf = ventes[ventes["Ticker"] == ticker]
-
-            # Corriger les tickers à partir des noms d'entreprises
-            match = pattern.search(ticker.lower())
-            if match:
-                matchedKey = match.group(0).lower()
-                ticker = tickerMapping[matchedKey]
-            
-            transaction = None
-            for tr in transactions:
-                if tr["ticker"] == ticker:
-                    transaction = tr
-                    break
-
-            if not transaction:
-                transaction = {"ticker": ticker, "achats": [], "ventes": []}
-                transactions.append(transaction)
-
-            # Ajouter les achats au ticker
-            for _, row in achatDf.iterrows():
-                transaction["achats"].append({
-                    "date": str(row["Date d'exécution"]),
-                    "price": abs(row["Montant investi"])
-                })
-
-            # Ajouter les ventes au ticker
-            for _, row in venteDf.iterrows():
-                transaction["ventes"].append({
-                    "date": str(row["Date d'exécution"]),
-                    "price": abs(row["Montant gagné"])
-                })
-
-        # Sauvegarde du fichier JSON
-        with open(pathJson, 'w', encoding='utf-8') as f:
-            json.dump({"transactions": transactions}, f, ensure_ascii=False, indent=4)
-    
     ########## ANNEXES ##########
     @staticmethod
     def MapTickerValue(ticker: str, mappingTickers: dict, pattern: re.Pattern) -> str:
@@ -228,7 +196,8 @@ class TradeRepublicFileExcelJson:
         if match:
             matchedKey = match.group(0).lower()
             return mappingTickers[matchedKey]
-        return ticker
+        else:
+            raise ValueError(f"Aucun mappage trouvé pour l'action {ticker}\n Il faut l'ajouter dans mappingTickers")
     
     @staticmethod
     def ConvertDateColumnsFromFirstRow(dataFrame: pd.DataFrame, dateFormat: str="%Y-%m-%d") -> pd.DataFrame:
@@ -259,9 +228,34 @@ class TradeRepublicFileExcelJson:
             dataFrame[column] = dataFrame[column].dt.strftime(dateFormat)
 
         return dataFrame
+    
+    @staticmethod
+    def DownloadDataJson(path: str) -> pd.DataFrame|None:
+        """
+        Télécharge les données d'un fichier JSON et les retourne sous forme de DataFrame.
+
+        Cette fonction ouvre un fichier JSON, charge son contenu et retourne les données sous forme de DataFrame pandas.
+        Si le fichier est vide ou qu'une erreur survient lors de la lecture, elle retourne None.
+
+        Args:
+            path (str): Le chemin vers le fichier JSON à lire.
+
+        Returns:
+            pd.DataFrame|None: Si le fichier JSON contient des données sous forme de liste d'objets, 
+                                il est converti en DataFrame et retourné. Sinon, retourne None.
+        """
+
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except:
+            # Fichier vide
+            return None
+
+        assert isinstance(data, list), "Le contenu du fichier JSON doit être une liste d'objets (dict)."
+        return pd.DataFrame(data)
     #############################
     ###################################################
-
 
 
     #################### EXCEL ####################
@@ -279,14 +273,19 @@ class TradeRepublicFileExcelJson:
             colonnesDates (list): Liste des colonnes à formater en dates.
             appliquerTableau (bool): Indique s'il faut appliquer un tableau autour des données.
         """
-        # Crée une nouvelle feuille dans le classeur Excel avec le nom spécifié
-        feuille = workbook.create_sheet(title=nomFeuille)
+        
+        if nomFeuille in workbook.sheetnames:
+            feuille = workbook[nomFeuille]
+            # Supprimer tous les tableaux existants
+            feuille.tables.clear()
+            startRow = feuille.max_row + 1
+        else:
+            feuille = workbook.create_sheet(title=nomFeuille)
+            startRow = 1
 
-        # Qui est la première colonne qui correspond aux dates de la plus récente à la plus ancienne
-        df = df.sort_values(by=df.columns[0], ascending=False)
-
-        # Ajoute les données du DataFrame à la feuille
-        for row in dataframe_to_rows(df, index=False, header=True):
+        # Ajouter les données
+        rows = dataframe_to_rows(df, index=False, header=(startRow == 1))
+        for i, row in enumerate(rows, start=startRow):
             feuille.append(row)
 
         # Obtenir les indices des colonnes à formater
@@ -337,7 +336,6 @@ class TradeRepublicFileExcelJson:
     ###############################################
 
 
-
     #################### PDF ####################
     ########## RENAME AND MOVE FILES ##########
     def ProcessPdf(self):
@@ -345,12 +343,12 @@ class TradeRepublicFileExcelJson:
         Parcourt les fichiers PDF dans un répertoire, puis utilise une fonction spécifiée pour traiter chaque fichier PDF et le déplacer.
         """
         
-        directory = self.directoryData
+        directory = self.directoryDataPdf
         operations = [
             {"directory": (directory + "Ordres d'achats/data"), "directoryRename": (directory + "Ordres d'achats"), "createFunction": self.RenameAndMoveOrdresAchats},
-            {"directory": (directory + "Dépôts d'argents/data"), "directoryRename": (directory + "Dépôts d'argents"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
+            {"directory": (directory + "Dépôts d'espèces/data"), "directoryRename": (directory + "Dépôts d'espèces"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
             {"directory": (directory + "Dividendes/data"), "directoryRename": (directory + "Dividendes"), "createFunction": self.RenameAndMoveDividendes},
-            {"directory": (directory + "Interets/data"), "directoryRename": (directory + "Interets"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
+            {"directory": (directory + "Interêts/data"), "directoryRename": (directory + "Interêts"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
             {"directory": (directory + "Retraits d'argents/data"), "directoryRename": (directory + "Retraits d'argents"), "createFunction": self.RenameAndMoveDepotRetraitArgentInteret},
             {"directory": (directory + "Ordres de ventes/data"), "directoryRename": (directory + "Ordres de ventes/FacturesVentes"), "createFunction": self.RenameAndMoveOrdresVentes},
         ]
@@ -363,6 +361,7 @@ class TradeRepublicFileExcelJson:
             # Créer le répertoire de destination s'il n'existe pas
             if not os.path.exists(cheminDossierRenommer):
                 os.makedirs(cheminDossierRenommer)
+                os.makedirs((cheminDossierRenommer + "/data"))
 
             # Parcourir tous les fichiers dans le dossier spécifié
             for fileName in os.listdir(nameDirectory):
@@ -471,10 +470,10 @@ class TradeRepublicFileExcelJson:
         # Déterminer le dossier de destination et le nom du fichier
         if re.search(re.escape("INFORMATIONS SUR LES COÛTS EX-ANTE DE LA VENTE DE TITRES"), text):
             debutNomFichier = f"{ticker} ({date}) Informations sur les coûts "
-            DossierDestination = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
+            DossierDestination = os.path.join('src/data/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
         else:
             debutNomFichier = f"{ticker} ({date}) Facture Vente "
-            DossierDestination = os.path.join('Bilan/Archives/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
+            DossierDestination = os.path.join('src/data/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
 
         # Assurer l'existence du dossier de destination
         os.makedirs(DossierDestination, exist_ok=True)
@@ -498,7 +497,7 @@ class TradeRepublicFileExcelJson:
     ###########################################
 
     ########## EXTRACTION DES DONNEES ##########
-    def DataDepotArgent(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataDepotArgent(self, pdfFiles: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -551,6 +550,11 @@ class TradeRepublicFileExcelJson:
                 print(f"Erreur lors du traitement du fichier {fichier}: {e}")
 
 
+        nomCol = "Date de valeur"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
+
         nomFeuille = "Dépôts Argents"
         colonnesEuros = ["Prix dépôt brut", "Frais", "Prix dépôt net"]
         colonnesPourcentages = []
@@ -559,7 +563,7 @@ class TradeRepublicFileExcelJson:
 
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    def DataDividendes(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataDividendes(self, pdfFiles: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -624,6 +628,11 @@ class TradeRepublicFileExcelJson:
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
 
+        nomCol = "Date de valeur"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
+
         nomFeuille = "Dividendes"
         colonnesEuros = ["Dividendes brut", "Impôt à la source", "Dividendes net"]
         colonnesPourcentages = []
@@ -632,7 +641,7 @@ class TradeRepublicFileExcelJson:
         
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    def DataInteret(self, pdf: list, chemin: str) -> pd.DataFrame:
+    def DataInteret(self, pdf: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -697,6 +706,11 @@ class TradeRepublicFileExcelJson:
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
 
+        nomCol = "Date d'effet"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
+
         nomFeuille = "Interêts"
         colonnesEuros = ["Interêts net"]
         colonnesPourcentages = ["Taux d'interêts"]
@@ -705,7 +719,7 @@ class TradeRepublicFileExcelJson:
 
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    def DataOrdresAchats(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataOrdresAchats(self, pdfFiles: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -780,6 +794,16 @@ class TradeRepublicFileExcelJson:
         }
         df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
+
+        nomCol = "Date d'exécution"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
+
+        # Vérifie si les dates de valeur sont vraies
+        tkinter = DateExecutionTkinter(df, nomCol, "Ticker")
+        df = tkinter.Run()
+
         nomFeuille = "Ordres d'Achats"
         colonnesEuros = ["Montant investi", "Cours moyen"]
         colonnesPourcentages = []
@@ -788,7 +812,7 @@ class TradeRepublicFileExcelJson:
 
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    def DataOrdresVentes(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataOrdresVentes(self, pdfFiles: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -837,7 +861,6 @@ class TradeRepublicFileExcelJson:
             frais = self.ExtraireDonnee(text, r"POSITION MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1)
             frais = float(frais.replace(",", ".")) if frais else 0
 
-
             newData = {
                 "Date d'exécution": dateExecution, 
                 "Date de valeur": dateValeur,
@@ -856,6 +879,11 @@ class TradeRepublicFileExcelJson:
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
 
+        nomCol = "Date d'exécution"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
+
         nomFeuille = "Ordres de Ventes"
         colonnesEuros = ["Montant vendu", "Frais", "Montant gagné", "Prix du ticker lors de la vente"]
         colonnesPourcentages = []
@@ -864,7 +892,7 @@ class TradeRepublicFileExcelJson:
 
         return df, nomFeuille, colonnesEuros, colonnesPourcentages, colonnesDates, appliquerTableau
 
-    def DataRetraitArgent(self, pdfFiles: list, chemin: str) -> pd.DataFrame:
+    def DataRetraitArgent(self, pdfFiles: list, chemin: str, fileJson: str) -> pd.DataFrame:
         """
         Extrait les données des fichiers PDF spécifiés et les retourne sous forme de DataFrame.
 
@@ -908,6 +936,11 @@ class TradeRepublicFileExcelJson:
             # Ajouter la nouvelle ligne au DataFrame
             df = pd.concat([df, pd.DataFrame([newData])], ignore_index=True)
 
+
+        nomCol = "Date de la commande"
+        derniereDate = self.DateRecente(fileJson, nomCol)
+        if derniereDate:
+            df = df[df[nomCol] > derniereDate].reset_index(drop=True)
 
         nomFeuille = "Retrait d'argent"
         colonnesEuros = ["Prix d'achat"]
@@ -1010,4 +1043,5 @@ class TradeRepublicFileExcelJson:
 
         return filePdf
     #############################
-    ############################################
+    #############################################
+

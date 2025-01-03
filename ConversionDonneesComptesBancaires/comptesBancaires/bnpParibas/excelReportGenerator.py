@@ -14,10 +14,6 @@ class ExcelReportGenerator:
     structurées sous forme de dictionnaires. Elle permet de sauvegarder les données dans un fichier Excel,
     d'ajouter des feuilles avec un formatage personnalisé, et de créer des bilans de revenus et de dépenses
     en regroupant les transactions par catégories.
-
-    Attributs:
-        - `dataDict` (dict): Dictionnaire contenant les données à enregistrer et à analyser.
-        - `outputFile` (str): Chemin du fichier Excel généré.
     """
 
     def __init__(self, dataDict, outputFile):
@@ -27,7 +23,7 @@ class ExcelReportGenerator:
         Args:
             dataDict (dict): Dictionnaire contenant les données pour les feuilles Excel.
         """
-        assert isinstance(dataDict, dict), f"dataDict doit être un dictionnaire, mais c'est {type(dataDict).__name__}."
+        assert isinstance(dataDict, dict), f"dataDict doit être un dictionnaire, mais c'est {type(dataDict)}."
 
         self.dataDict = dataDict
         self.outputFile = outputFile
@@ -144,11 +140,11 @@ class ExcelReportGenerator:
         Returns:
             pd.DataFrame: DataFrame initialisé avec les colonnes et index spécifiés.
         """
-        assert isinstance(columnNames, list), f"columnNames doit être une liste, mais c'est {type(columnNames).__name__}."
-        assert isinstance(months, list), f"months doit être une liste, mais c'est {type(months).__name__}."
+        assert isinstance(columnNames, list), f"columnNames doit être une liste, mais c'est {type(columnNames)}."
+        assert isinstance(months, list), f"months doit être une liste, mais c'est {type(months)}."
         
         data = {month: [0] * len(columnNames) for month in months}
-        df = pd.DataFrame(data, index=columnNames)
+        df = pd.DataFrame(data, index=columnNames, dtype=float)
         df[''] = ''
 
         return df
@@ -160,7 +156,7 @@ class ExcelReportGenerator:
         Args:
             revenues (list): Liste de transactions de revenus.
         """
-        assert isinstance(revenues, list), f"revenues doit être une liste, mais c'est {type(revenues).__name__}."
+        assert isinstance(revenues, list), f"revenues doit être une liste, mais c'est {type(revenues)}."
         months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '']
         revenueTypes = ['Revenus']
 
@@ -193,7 +189,7 @@ class ExcelReportGenerator:
         Args:
             expenses (dict): Dictionnaire des transactions de dépenses par catégorie.
         """
-        assert isinstance(expenses, dict), f"expenses doit être un dictionnaire, mais c'est {type(expenses).__name__}."
+        assert isinstance(expenses, dict), f"expenses doit être un dictionnaire, mais c'est {type(expenses)}."
         months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '']
         expenseTypes = ['Dépenses']
 
@@ -258,10 +254,10 @@ class ExcelReportGenerator:
             startRow (int): Ligne de départ pour ajouter les données.
             spacing (int): Espacement après le dernier bloc de données.
         """
-        assert isinstance(df, pd.DataFrame), f"df doit être un DataFrame, mais c'est {type(df).__name__}."
-        assert isinstance(sheetName, str), f"sheetName doit être une chaîne de caractères, mais c'est {type(sheetName).__name__}."
-        assert isinstance(startRow, int), f"startRow doit être un entier, mais c'est {type(startRow).__name__}."
-        assert isinstance(spacing, int), f"spacing doit être un entier, mais c'est {type(spacing).__name__}."
+        assert isinstance(df, pd.DataFrame), f"df doit être un DataFrame, mais c'est {type(df)}."
+        assert isinstance(sheetName, str), f"sheetName doit être une chaîne de caractères, mais c'est {type(sheetName)}."
+        assert isinstance(startRow, int), f"startRow doit être un entier, mais c'est {type(startRow)}."
+        assert isinstance(spacing, int), f"spacing doit être un entier, mais c'est {type(spacing)}."
 
         # On remplace tous les zéros par une chaîne de caractères vides pour améliorer le visuel
         df.replace(0, '', inplace=True)

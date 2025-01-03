@@ -12,15 +12,9 @@ class DataExtractor:
     à partir de fichiers Excel et JSON. Elle permet de sélectionner un fichier via une interface 
     utilisateur, de lire et de convertir les données contenues dans le fichier, ainsi que de 
     nettoyer et transformer ces données pour une utilisation ultérieure.
-
-    Attributs:
-        - `initialDir` (str): Répertoire initial pour ouvrir la boîte de dialogue de sélection de fichiers. 
-          Par défaut, défini sur "Bilan/Archives".
-        - `filePath` (str): Chemin du fichier sélectionné par l'utilisateur.
-        - `data` (pd.DataFrame ou dict): Contient les données extraites du fichier sélectionné.
     """
     
-    def __init__(self, initialDir="Bilan/Archives"):
+    def __init__(self, initialDir: str):
         """
         Initialise l'extracteur de données avec un répertoire de départ pour la sélection de fichiers.
 

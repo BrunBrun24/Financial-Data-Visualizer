@@ -1,8 +1,73 @@
-from modules.DataExtractor import DataExtractor
-from modules.OperationCategoriser import OperationCategoriser
-from modules.GraphiqueFinancier import GraphiqueFinancier
-from modules.ExcelReportGenerator import ExcelReportGenerator
-from utils.FonctionsSecondaires import ExtraireAnnee, SaveDictToJson, DiviserParMois, CreerNomFichier, RecupererFichiersJson, LoadDictFromJson
+from comptesBancaires.tradeRepublic.tradeRepublicFileExcelJson import TradeRepublicFileExcelJson
+from comptesBancaires.bnpParibas.dataExtractor import DataExtractor
+from comptesBancaires.bnpParibas.operationCategoriser import OperationCategoriser
+from comptesBancaires.bnpParibas.excelReportGenerator import ExcelReportGenerator
+from comptesBancaires.bnpParibas.graphiqueFinancier import GraphiqueFinancier
+from comptesBancaires.bnpParibas.fonctionsSecondaires import *
+
+
+def TradeRepublic():
+    directory = f"data/Bourse/"
+    tickerMapping = {
+        'Hermes': 'RMS.PA',
+        'Air Liquide': 'AI.PA',
+        'TotalEnergies': 'TTE.PA',
+        "Oréal": 'OR.PA',
+        "L'Oreal": 'OR.PA',
+        'ACCOR': 'AC.PA',
+        'Danone': 'BN.PA',
+        'Pernod Ricard': 'RI.PA',
+        'LVMH': 'MC.PA',
+        'Sodexo': 'SW.PA',
+        'Schneider Electric': 'SU.PA',
+        'Capgemini': 'CAP.PA',
+        'Cap gemini': 'CAP.PA',
+        'iShares Physical Metals PLC': 'PHYMF',
+        'iShs VII-Core S&P': 'CSPX.L',
+        'AbbVie': 'ABBV',
+        'Alphabet': 'GOOGL',
+        'Salesforce': 'CRM',
+        'Amazon': 'AMZN',
+        'Apple': 'AAPL',
+        'Arista Networks': 'ANET',
+        'Blackrock': 'BLK',
+        'Broadcom': 'AVGO',
+        'Cadence Design Systems': 'CDNS',
+        'Coca-Cola': 'KO',
+        'Meta Platforms': 'META',
+        'Fortinet': 'FTNT',
+        'Intuit': 'INTU',
+        'Johnson & Johnson': 'JNJ',
+        'KLA Corp': 'KLAC',
+        'KLA-Tencor': 'KLAC',
+        'Lam Research': 'LRCX',
+        'Eli Lilly': 'LLY',
+        'Mastercard': 'MA',
+        "McDonald's": 'MCD',
+        'Microsoft': 'MSFT',
+        'Novo-Nordisk': 'NVO',
+        'Novo Nordisk': 'NVO',
+        'NVIDIA': 'NVDA',
+        'Oracle': 'ORCL',
+        'Palo Alto Networks': 'PANW',
+        'PepsiCo': 'PEP',
+        'Procter & Gamble': 'PG',
+        'Roper Technologies': 'ROP',
+        'S&P Global': 'SPGI',
+        'Synopsys': 'SNPS',
+        'UnitedHealth': 'UNH',
+        'VISA': 'V',
+        'Walmart': 'WMT',
+        'Cintas': 'CTAS',
+        'Pluxee': 'PLX.PA',
+    }
+
+    TradeRepublic = TradeRepublicFileExcelJson(directoryData=directory, tickerMapping=tickerMapping)
+    TradeRepublic.CreateFileExcelJson("Bilan/Bourse/Récapitulatif des gains.xlsx")
+
+def BnpParibas():
+    pass
+
 
 
 def GenererGraphiquesMensuels(chartGen, data, dossier, year, compteCourant=False):
@@ -41,37 +106,20 @@ def CompteLivret():
     """
     Catégorise les dépenses
     """
-    # Créer une instance de DataExtractor
-    extracteur = DataExtractor(initialDir="Bilan/Archives")
-    
-    # Appeler la méthode SelectAndExtractData pour ouvrir la fenêtre de sélection et extraire les données
+
+    dossierContenantLesDonnees = "data/"
+    extracteur = DataExtractor(initialDir=dossierContenantLesDonnees)
     data, extension, dossier = extracteur.SelectAndExtractData()
 
     if (data is not None) and (extension == "Excel"):
         year = ExtraireAnnee(data)
-        cheminFileJson = f"Bilan/Archives/{dossier}/{year}.json"
+        cheminFileJson = dossierContenantLesDonnees + f"{dossier}/{year}.json"
 
-        buttonLabels = {
-            'Investissement': ["CTO", "Livret A", "Investissement - Autres"],
-            'Revenus': ["Aides et allocations", "Salaires et revenus d'activité", "Revenus de placement", "Pensions", "Intérêts", "Loyers", "Dividendes", "Remboursement", "Chèque reçu", "Déblocage emprunt", "Virement reçu", "Virement interne", "Cashback", "Revenus - Autres"],
-            'Abonnement': ["Téléphone", "Internet", "Streaming", "Logiciels"],
-            'Impôts': ["Impôt sur taxes", "Impôt sur le revenu", "Impôt sur la fortune", "Taxe foncière", "Taxe d'habitation", "Contribution sociales (CSG / CRDS)"],
-            'Banque': ["Epargne", "Remboursement emprumt", "Frais bancaires", "Prélèvement carte débit différé", "Retrait d'espèces", "Banques - Autres"],
-            "Logement": ["Logement - Autres", "Electricité, gaz", "Eau", "Chauffage", "Loyer", "Prêt Immobiler", "Bricolage et jardinage", "Assurance habitation", "Logement - Autres", "Mobilier, électroménager, déco"],
-            'Loisir et sorties': ["Voyages, vacances", "Restaurants - Bars", "Diversements, sortie culturelles", "Sports", "Soirée - Sortie", "Loisirs et sorties - Autres"],
-            'Santé': ["Medecin", "Pharmacie", "Dentiste", "Mutuelle", "Opticien", "Hôpital"],
-            'Transports et véhicules': ["Assurance véhicule", "Crédit auto", "Carburant", "Entretient véhicule", "Transport en commun", "Billet d'avion, Billet de train", "Taxi, VTC", "Location de véhicule", "Péage", "Stationnement"],
-            'Vie quotidienne': ["Alimentation - Supermarché", "Frais animaux", "Coiffeur, soins", "Habillement", "Achat, shopping", "Jeux Vidéo", "Frais postaux", "Achat multimédias - Hight tech", "Autres", "Aide-à-domicile", "Cadeaux", "Vie quotidienne - Autres"],
-            'Enfant(s)': ["Pension alimentaire", "Crèche, baby-sitter", "Scolarité, études", "Argent de poche", "Activités enfants"],
-        }
-
-        buttonLabels = {key: sorted(buttonLabels[key]) for key in sorted(buttonLabels.keys())}
-
-        trierDonnee = OperationCategoriser(data, buttonLabels, cheminFileJson)
+        trierDonnee = OperationCategoriser(data, cheminFileJson)
         results = trierDonnee.AfficherFenetreAvecBoutons()
 
         if dossier is not None:
-            SaveDictToJson(results, f"Bilan/Archives/{dossier}/{year}.json")
+            SaveDictToJson(results, (dossierContenantLesDonnees + f"{dossier}/{year}.json"))
 
             compteCourant = (dossier == "Compte Chèques")
             GenererRapports(results, dossier, year, compteCourant)
@@ -82,6 +130,7 @@ def CompteLivret():
         if dossier is not None:
             compteCourant = (dossier == "Compte Chèques")
             GenererRapports(data, dossier, year, compteCourant)
+
 
 
 def GenererGraphiquesParMois(chartGen, data, dossier, year, compteCourant):
@@ -125,7 +174,7 @@ def CompteLivretAllUpdateGraphiques():
     dossiers = ["Compte Chèques", "Livret A"]
 
     for dossier in dossiers:
-        allFileJson = RecupererFichiersJson(f"Bilan/Archives/{dossier}")
+        allFileJson = RecupererFichiersJson(f"src/data/{dossier}")
 
         for fileJson in allFileJson:
             data = LoadDictFromJson(fileJson)
@@ -144,6 +193,9 @@ def CompteLivretAllUpdateGraphiques():
             GenererGraphiquesParMois(chartGen, data, dossier, year, compteCourant)
 
 
+
 if __name__ == "__main__":
+    TradeRepublic()
+    # BnpParibas()
+    # CompteLivret()
     # CompteLivretAllUpdateGraphiques()
-    CompteLivret()
