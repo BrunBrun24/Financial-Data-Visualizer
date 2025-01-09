@@ -1,4 +1,4 @@
-from modules.bourse import Bourse
+from modules.PortefeuilleBourse import PortefeuilleBourse
 
 
 
@@ -19,8 +19,9 @@ portfolioPercentage = [
 
 
 repertoireJson = "data/Bourse/json/"
-boursePortefeuille = Bourse(repertoireJson)
+boursePortefeuille = PortefeuilleBourse(repertoireJson)
 boursePortefeuille.SetPortfolioPercentage(portfolioPercentage)
-boursePortefeuille.DollarCostAveraging()
+boursePortefeuille.DCA()
+# boursePortefeuille.DCV()
 # boursePortefeuille.ReplicationDeMonPortefeuille()
 boursePortefeuille.PlotlyInteractive("Bilan/Bourse/", "Bilan Portefeuille.html")

@@ -1,20 +1,15 @@
-from .graphiqueLigne import GraphiqueLigne
-from .graphiqueBar import GraphiqueBar
-from .graphiqueCirculaire import GraphiqueCirculaire
-from .graphiqueTableaux import GraphiqueTableaux
-from .graphiqueHeatmap import GraphiqueHeatmap
-from .graphiqueTreemap import GraphiqueTreemap
+from .graphiquesPortefeuilles import GraphiquesPortefeuilles
+from .graphiquesTickers import GraphiquesTickers
 
 import os
 
-
-class GraphiquesDashboard(GraphiqueLigne, GraphiqueBar, GraphiqueCirculaire, GraphiqueTableaux, GraphiqueHeatmap, GraphiqueTreemap):
+class GraphiquesDashboard(GraphiquesPortefeuilles, GraphiquesTickers):
     def __init__(self, tickersTWR, prixNetTickers, prixBrutTickers, dividendesTickers, 
-                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestis, 
-                 pourcentagesMensuelsPortefeuille):
+                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestisTickers, 
+                 pourcentagesMensuelsPortefeuille, prixFifoTickers, montantsInvestisTickers, cash):
         super().__init__(tickersTWR, prixNetTickers, prixBrutTickers, dividendesTickers, 
-                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestis, 
-                 pourcentagesMensuelsPortefeuille)
+                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestisTickers, 
+                 pourcentagesMensuelsPortefeuille, prixFifoTickers, montantsInvestisTickers, cash)
         
 
     def PlotlyInteractive(self, nomDossier: str, nomFichier: str):
@@ -32,24 +27,21 @@ class GraphiquesDashboard(GraphiqueLigne, GraphiqueBar, GraphiqueCirculaire, Gra
         assert isinstance(nomFichier, str), f"nomFichier doit être une chaîne de caractères: ({nomFichier})"
         assert nomFichier.endswith('.html'), f"Le fichier {nomFichier} n'a pas l'extension .html."
 
-        portefeuillesGraphiques = []
+        portefeuillesGraphiquesHtml = []
 
         # Ajout des graphiques
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.portefeuilleTWR, "Progression en TWR (pour l'argent investi) pour chaque portefeuille", "%"))
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.prixNetPortefeuille, "Progression en euro pour chaque portefeuille", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueHeatmapPourcentageParMois(self.pourcentagesMensuelsPortefeuille))
-        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.tickersTWR, "Progression en TWR (pour l'argent investi) pour chaque ticker", "%"))
-        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.prixNetTickers, "Progression net en euro pour chaque ticker", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueLineaireTickers(self.prixBrutTickers, "Progression brut en euro pour chaque ticker", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueDividendesParAction(self.dividendesTickers))
-        portefeuillesGraphiques.append(self.GraphiqueTreemapPortefeuille(self.prixBrutTickers))
-        portefeuillesGraphiques.append(self.GraphiqueSunburst(self.prixBrutTickers))
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.fondsInvestis, "Progression de l'argent investi", "€"))
-        portefeuillesGraphiques.append(self.GraphiqueLineairePortefeuilles(self.soldeCompteBancaire, "Progression de l'argent sur le Compte Bancaire", "€"))
+        portefeuillesGraphiquesHtml.append(self.GraphiqueLineairePortefeuillesMonnaie(self.soldeCompteBancaire, "Progression de l'argent sur le Compte", 1880, 900))
+        portefeuillesGraphiquesHtml.append(self.GraphiqueDfPourcentageMonnaie(self.portefeuilleTWR, self.prixNetPortefeuille, "Progression en TWR pour chaque portefeuille", 1880, 900))
+        portefeuillesGraphiquesHtml.append(self.GraphiqueCombineSunburstTreemapHeatmap(self.prixBrutTickers, self.pourcentagesMensuelsPortefeuille, self.cash, 1880))
 
-        # Sauvegarde des graphiques dans un fichier HTML
-        self.SaveInFile(portefeuillesGraphiques, (nomDossier + nomFichier))
-        
+        portefeuillesGraphiquesHtml.append(self.GraphiqueAnalyseTickers(self.prixTickers, self.tickersTWR, self.prixNetTickers, 
+                                                                        self.dividendesTickers, self.prixFifoTickers, self.fondsInvestisTickers, 
+                                                                        self.montantsInvestisTickers, self.montantsVentesTickers, 1880))
+
+
+        portefeuillesGraphiquesHtml = [element for element in portefeuillesGraphiquesHtml if element is not None]
+        self.SaveInFile(portefeuillesGraphiquesHtml, (nomDossier + nomFichier))
+    
     @staticmethod
     def SaveInFile(figures: list, nomFichier: str):
         """

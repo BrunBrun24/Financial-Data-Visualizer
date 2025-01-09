@@ -1,6 +1,6 @@
+import yfinance as yf
 import pandas as pd
-from collections import defaultdict
-
+from datetime import timedelta
 
 class BasePortefeuille:
     
@@ -64,9 +64,12 @@ class BasePortefeuille:
                 if dateVente <= date:
                     montantsInvestisTotal -= prix
 
-            # Calcul de l'évolution en pourcentage
-            pourcentageEvolution = ((valeurMois) * 100 / (montantsInvestisTotal + montantGagneMoisPasse)) - 100
-            # Ajouter au dictionnaire avec la clé formatée en 'YYYY-MM'
+            if montantsInvestisTotal + montantGagneMoisPasse == 0:
+                pourcentageEvolution = 0
+            else:
+                # Calcul de l'évolution en pourcentage
+                pourcentageEvolution = ((valeurMois) * 100 / (montantsInvestisTotal + montantGagneMoisPasse)) - 100
+                # Ajouter au dictionnaire avec la clé formatée en 'YYYY-MM'
             evolutionPourcentageDict[date.strftime('%Y-%m')] = round(pourcentageEvolution, 2)
 
             # Mettre à jour le montant gagné du mois passé
@@ -154,25 +157,22 @@ class BasePortefeuille:
         assert isinstance(montantsInvestis, pd.DataFrame), "montantsInvestis doit être un DataFrame"
         assert isinstance(prixTickers, pd.DataFrame), "prixTickers doit être un DataFrame"
         
-        assert montantsInvestis.index.equals(prixTickers.index), "Les dates des DataFrames doivent correspondre"
-        assert montantsInvestis.columns.equals(prixTickers.columns), "Les tickers des DataFrames doivent correspondre"
-        
         # Initialiser le DataFrame pour stocker les valeurs composées de plus/moins-value
-        evolutionArgentsInvestisTickers = pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
-        evolutionGainsPertesTickers = pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
+        evolutionArgentsInvestisTickers = pd.DataFrame(index=montantsInvestis.index, columns=montantsInvestis.columns, dtype=float)
+        evolutionGainsPertesTickers = pd.DataFrame(index=montantsInvestis.index, columns=montantsInvestis.columns, dtype=float)
 
         # Calcul de la plus-value composée pour chaque jour
-        for ticker in prixTickers.columns:
+        for ticker in montantsInvestis.columns:
             
             # Initialiser avec la valeur d'achat initiale pour chaque ticker
-            evolutionArgentsInvestisTickers.loc[prixTickers.index[0], ticker] = montantsInvestis.loc[prixTickers.index[0], ticker]
-            evolutionGainsPertesTickers.loc[prixTickers.index[0], ticker] = 0
+            evolutionArgentsInvestisTickers.loc[montantsInvestis.index[0], ticker] = montantsInvestis.loc[montantsInvestis.index[0], ticker]
+            evolutionGainsPertesTickers.loc[montantsInvestis.index[0], ticker] = 0
 
-            montantsInvestisCumules = montantsInvestis.loc[prixTickers.index[0], ticker]
+            montantsInvestisCumules = montantsInvestis.loc[montantsInvestis.index[0], ticker]
 
-            for i in range(1, len(prixTickers.index)):
-                datePrecedente = prixTickers.index[i-1]
-                dateActuelle = prixTickers.index[i]
+            for i in range(1, len(montantsInvestis.index)):
+                datePrecedente = montantsInvestis.index[i-1]
+                dateActuelle = montantsInvestis.index[i]
 
                 # Calcul de l'évolution en pourcentage entre le jour actuel et le jour précédent
                 evolutionPourcentage = (prixTickers.loc[dateActuelle, ticker] / prixTickers.loc[datePrecedente, ticker]) - 1
@@ -186,42 +186,150 @@ class BasePortefeuille:
                     montantsInvestisCumules += montantsInvestis.loc[dateActuelle, ticker]
 
         return evolutionArgentsInvestisTickers, evolutionGainsPertesTickers
-    ##########################
 
     @staticmethod
-    def SommeInvestissementParDate(dictionnaireInvestissements: dict) -> dict:
+    def CalculerEvolutionDividendesPortefeuille(evolutionPrixBrutTickers: pd.DataFrame, tickerPriceDf: pd.DataFrame) -> pd.DataFrame:
         """
-        Crée un nouveau dictionnaire avec les dates comme clés et la somme des montants investis à chaque date comme valeurs.
+        Calcule l'évolution des dividendes pour chaque ticker d'un portefeuille, basée sur les prix bruts et les dividendes distribués.
 
         Args:
-            dictionnaireInvestissements (dict): Dictionnaire où chaque clé représente un actif et les valeurs sont
-                                                des sous-dictionnaires avec des dates et les montants investis à ces dates.
+            evolutionPrixBrutTickers (pd.DataFrame): DataFrame contenant l'évolution brute des prix des tickers du portefeuille.
+            tickerPriceDf (pd.DataFrame): DataFrame contenant les prix des tickers correspondants.
 
         Returns:
-            dict: Dictionnaire avec les dates comme clés (format 'YYYY-MM-DD') et les sommes des montants investis à chaque date.
+            pd.DataFrame: DataFrame contenant l'évolution des dividendes pour chaque ticker, répartis sur les dates du portefeuille.
         """
-        # Assertion pour vérifier les types des entrées
-        assert isinstance(dictionnaireInvestissements, dict), "Le paramètre dictionnaireInvestissements doit être un dictionnaire."
+        assert isinstance(evolutionPrixBrutTickers, pd.DataFrame), "evolutionPrixBrutTickers doit être un DataFrame"
+        assert isinstance(tickerPriceDf, pd.DataFrame), "tickerPriceDf doit être un DataFrame"
 
-        # Utilisation de defaultdict pour gérer la somme par date
-        investissementParDate = defaultdict(float)
+        # Vérification des types de données dans les DataFrames
+        assert all(isinstance(date, pd.Timestamp) for date in evolutionPrixBrutTickers.index), "Les index de evolutionPrixBrutTickers doivent être de type pd.Timestamp"
 
-        # Parcours du dictionnaire d'investissements
-        for actif, investissements in dictionnaireInvestissements.items():
-            assert isinstance(actif, str), "Les clés du dictionnaire principal doivent être des chaînes de caractères représentant les actifs."
-            assert isinstance(investissements, dict), f"Les valeurs associées à l'actif '{actif}' doivent être des dictionnaires."
+        # Initialiser le DataFrame des dividendes avec des zéros
+        tickersDividendes = pd.DataFrame(0, index=evolutionPrixBrutTickers.index, columns=evolutionPrixBrutTickers.columns, dtype=float)
 
-            for date, montant in investissements.items():
-                assert isinstance(date, (pd.Timestamp, str)), f"La clé '{date}' dans les investissements de l'actif '{actif}' doit être une date (datetime ou string 'YYYY-MM-DD')."
-                assert isinstance(montant, (int, float)), f"Le montant associé à la date '{date}' doit être un nombre (int ou float)."
+        for ticker in evolutionPrixBrutTickers.columns:
+            # Téléchargement des données de dividendes
+            stock = yf.Ticker(ticker)
+            dividendes = stock.dividends
 
-                # Si la date est une chaîne de caractères, la convertir en datetime
-                if isinstance(date, str):
-                    date = pd.to_datetime(date)
+            # S'assurer que l'index des dividendes est timezone-naive pour comparaison
+            if dividendes.index.tz is not None:
+                dividendes.index = dividendes.index.tz_localize(None)
 
-                # Ajouter le montant à la date correspondante
-                investissementParDate[date] += montant
+            # Filtrage des dividendes dans la plage de dates spécifiée
+            dividendes = dividendes.loc[evolutionPrixBrutTickers.index.min():evolutionPrixBrutTickers.index.max()]
 
-        # Conversion en dictionnaire classique et tri par les clés
-        return dict(sorted(investissementParDate.items()))
+            # Ajout des dividendes au DataFrame, avec propagation aux dates suivantes
+            for date, montantDividendes in dividendes.items():
+                if date in tickersDividendes.index:
+                    # Calculer et ajouter le montant du dividende
+                    montantDividendesAjoute = round(montantDividendes * evolutionPrixBrutTickers.at[date, ticker] / tickerPriceDf.at[date, ticker], 2)
+                    tickersDividendes.at[date, ticker] += montantDividendesAjoute
+
+        return tickersDividendes
+    
+    def CalculerPrixFifoTickers(self, montantsInvestis: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calcule le prix d'achat moyen (FIFO) pour chaque action basée sur les montants investis et les prix des tickers.
+
+        Args:
+            montantsInvestis (pd.DataFrame): DataFrame contenant les montants investis pour chaque action en colonnes,
+                                            avec les dates en index.
+
+        Returns:
+            pd.DataFrame: DataFrame contenant les prix d'achat moyens (FIFO) pour chaque action.
+        """
+        assert isinstance(montantsInvestis, pd.DataFrame), "montantsInvestis doit être un DataFrame"
+
+        # Nettoyage des données : conserver uniquement les lignes où les montants investis ne sont pas tous nuls
+        montantsInvestis = montantsInvestis.loc[montantsInvestis.sum(axis=1) != 0]
+        prixTickers = self.prixTickers.loc[montantsInvestis.index]
+
+        # Initialisation du DataFrame pour stocker les prix FIFO
+        prixFifo = pd.DataFrame(index=montantsInvestis.index, columns=montantsInvestis.columns, dtype=float)
+
+        # Boucle sur chaque ticker pour calculer le prix d'achat moyen
+        for ticker in montantsInvestis.columns:
+            montants = montantsInvestis[ticker]
+            prix = prixTickers[ticker]
+            
+            quantiteTotale = 0
+            totalInvesti = 0
+            
+            for date in montants.index:
+                montantInvesti = montants[date]
+                prixDuJour = prix[date]
+                
+                if montantInvesti > 0:  # Investissement effectué ce jour-là
+                    quantiteAchetee = montantInvesti / prixDuJour
+                    quantiteTotale += quantiteAchetee
+                    totalInvesti += montantInvesti
+
+                # Calcul du prix moyen FIFO si une quantité totale existe
+                prixFifo.loc[date, ticker] = totalInvesti / quantiteTotale if quantiteTotale > 0 else 0
+
+        # Compléter les données entre startDate et endDate
+        dateRange = pd.date_range(start=self.startDate, end=self.endDate, freq='D')
+        prixFifo = prixFifo.reindex(dateRange)  # Ajouter les dates manquantes
+        prixFifo = prixFifo.ffill()  # Propager les dernières valeurs disponibles
+        firstInvestmentDate = montantsInvestis.index.min() - timedelta(days=1)
+        prixFifo.loc[:firstInvestmentDate] = 0
+
+        return prixFifo
+    ##########################
+    
+    def ArgentInitialementInvesti(self) -> int|float:
+        """
+        Calcule l'argent investi initialement.
+        
+        Il faut calculer la somme des montants investis pour chaque ticker à chaque date d'achat.
+        Puis on soustrait l'argent initialement investi du ticker s'il a été vendu.
+
+        Attention toutefois, si on vend un ticker et qu'il possède une ancienne date de vente.
+        Alors il faut calculer l'argent initialement investi entre la dernière date de vente et la date de vente actuelle.
+
+        De plus il faut rajouter l'argent initialement investi des tickers qui sont vendus après la dernière date d'achats.
+
+        Returns:
+            int|float: La différence entre la somme des prix d'achat et la somme des prix de vente.
+        """
+
+        totalBuy = 0.0
+        totalSell = 0.0
+
+        # Dictionnaire pour garder la trace de l'investissement restant pour chaque ticker
+        investments = {ticker: 0.0 for ticker in self.datesAchats.keys()}
+
+        # Calcul de l'argent investi initialement pour chaque ticker
+        for ticker, achats in self.datesAchats.items():
+            # Somme des prix d'achat
+            totalBuy += sum(achats.values())
+            investments[ticker] = sum(achats.values())
+
+        # Calcul des ventes et ajustement de l'investissement pour chaque ticker
+        for ticker, dateVente in self.datesVentes.items():
+            if ticker in investments:
+                # Si l'action a été vendue, soustraire l'investissement
+                totalSell += investments[ticker]
+
+                # Après la vente, réinitialiser l'investissement pour cette action
+                investments[ticker] = 0.0
+
+
+        derniereDateAchat = max([date for tickerDates in self.datesAchats.values() for date in tickerDates.keys()])
+        tickerVentes = sorted(set(ticker for ticker in self.datesVentes.keys()))
+        argentEnPlus = 0
+        
+        for ticker, datesAchatsPrix in self.datesAchats.items():
+            if ticker in tickerVentes:
+                for dateVente in self.datesVentes[ticker].keys():
+
+                    if dateVente > derniereDateAchat:
+                        # Parcourir toutes les dates d'achat du ticker
+                        for dateAchat, montant in datesAchatsPrix.items():
+                            argentEnPlus += montant
+
+        return (totalBuy - totalSell + argentEnPlus)
+    
     

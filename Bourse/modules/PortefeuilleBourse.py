@@ -1,7 +1,9 @@
 from modules.recuperationDonnees import RecuperationDonnees
-from .graphiques.GraphiquesDashboard import GraphiquesDashboard 
+from .graphiques.graphiquesDashboard import GraphiquesDashboard 
 from .portefeuilles.monPortefeuille import MonPortefeuille
-from .portefeuilles.dca import DCA
+from .portefeuilles.dollarCostAveraging import DollarCostAveraging
+from .portefeuilles.dollarCostValue import DollarCostValue
+from .portefeuilles.moyenneMobile import MoyenneMobile
 from .portefeuilles.replication import Replication
 
 import pandas as pd
@@ -9,8 +11,7 @@ from datetime import datetime
 import os
 import copy
 
-
-class Bourse(RecuperationDonnees, GraphiquesDashboard , MonPortefeuille, DCA, Replication):
+class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuille, DollarCostAveraging, DollarCostValue, MoyenneMobile, Replication):
     """
     La classe TradeRepublicPerformance est conçue pour analyser et visualiser la performance des transactions boursières
     à partir d’un fichier JSON contenant les données de transactions.
@@ -25,26 +26,28 @@ class Bourse(RecuperationDonnees, GraphiquesDashboard , MonPortefeuille, DCA, Re
         assert isinstance(repertoireJson, str), f"repertoireJson doit être une chaîne de caractères: ({type(repertoireJson)})"
         assert os.path.isdir(repertoireJson), f"directory doit être un répertoire valide : ({repertoireJson})"
 
-        self.repertoireJson = repertoireJson
+        RecuperationDonnees.__init__(self, repertoireJson)  # Passe la valeur au parent si nécessaire
 
         self.startDate = self.PremiereDateDepot()
         self.endDate = datetime.today()
-
         self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "Ordres d'achats.json"))
         self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "Ordres de ventes.json"))
-        self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()))
+        self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()), self.startDate, self.endDate)
 
+        self.prixFifoTickers = {}
+        self.montantsInvestisTickers = {}
+        self.montantsVentesTickers = {}
         self.tickersTWR = {}
         self.prixNetTickers = {}
         self.prixBrutTickers = {}
         self.dividendesTickers = {}
+        self.fondsInvestisTickers = {}
         
-        self.portefeuilleTWR = pd.DataFrame()
-        self.prixNetPortefeuille = pd.DataFrame()
-        self.pourcentagesMensuelsPortefeuille = pd.DataFrame()
-
-        self.fondsInvestis = pd.DataFrame()
-        self.soldeCompteBancaire = pd.DataFrame()
+        self.portefeuilleTWR = pd.DataFrame(dtype=float)
+        self.prixNetPortefeuille = pd.DataFrame(dtype=float)
+        self.pourcentagesMensuelsPortefeuille = pd.DataFrame(dtype=float)
+        self.soldeCompteBancaire = pd.DataFrame(dtype=float)
+        self.cash = pd.DataFrame(dtype=float)
 
         # Ajoute sur le graphique mon portefeuille
         self.MonPortefeuille()
@@ -68,7 +71,7 @@ class Bourse(RecuperationDonnees, GraphiquesDashboard , MonPortefeuille, DCA, Re
         tickersInitial = sorted(list(self.prixTickers.columns))
         tickerUnique = [item for item in tickersAll if item not in tickersInitial]
 
-        prixTickersUnique = self.DownloadTickersPrice(tickerUnique)
+        prixTickersUnique = self.DownloadTickersPrice(tickerUnique, self.startDate, self.endDate)
         self.prixTickers = pd.concat([self.prixTickers, prixTickersUnique], axis=1)
     
     def EnregistrerDataFrameEnJson(self, cheminFichierJson: str):
@@ -96,4 +99,3 @@ class Bourse(RecuperationDonnees, GraphiquesDashboard , MonPortefeuille, DCA, Re
         with open(cheminFichierJson, 'w', encoding="utf-8") as f:
             f.write(jsonData)
     
-

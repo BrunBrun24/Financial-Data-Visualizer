@@ -3,7 +3,7 @@ from .basePortefeuille import BasePortefeuille
 import pandas as pd
 from datetime import datetime
 import numpy as np
-
+from collections import defaultdict
 
 class MonPortefeuille(BasePortefeuille):
     
@@ -16,12 +16,12 @@ class MonPortefeuille(BasePortefeuille):
 
         nomPortefeuille = "Mon Portefeuille"
 
-        montantsInvestis, montantsInvestisCumules = self.PrixMoyenPondereAchat()
+        montantsInvestisTickers, montantsInvestisCumules = self.PrixMoyenPondereAchat()
 
         # Calcul des montants
-        evolutionArgentsInvestisTickers, evolutionGainsPertesTickers = self.PlusMoinsValueCompose(montantsInvestis, self.prixTickers)
+        evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers = self.PlusMoinsValueCompose(montantsInvestisTickers, self.prixTickers)
         evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
-        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)# + self.PlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, prixTickers).cumsum(axis=0).sum(axis=1)
+        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)# + self.PlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers).cumsum(axis=0).sum(axis=1)
 
         # Calcul des pourcentages
         evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
@@ -30,13 +30,17 @@ class MonPortefeuille(BasePortefeuille):
         # On stock les DataFrames
         self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
         self.prixNetPortefeuille[nomPortefeuille] = evolutionGainsPertesPortefeuille
-        self.fondsInvestis[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
         self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
         self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
         self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers)
         self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
+        self.prixFifoTickers[nomPortefeuille] = self.CalculerPrixFifoTickers(montantsInvestisTickers)
+        self.fondsInvestisTickers[nomPortefeuille] = montantsInvestisCumules
+        self.montantsInvestisTickers[nomPortefeuille] = montantsInvestisTickers
+        self.montantsVentesTickers[nomPortefeuille] = evolutionVentesTickers
         self.soldeCompteBancaire[nomPortefeuille] = (self.EvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille + self.PlusValuesEncaisseesBrut())
+        self.cash[nomPortefeuille] = self.PlusValuesEncaisseesBrut()
 
     def PrixMoyenPondereAchat(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -64,21 +68,30 @@ class MonPortefeuille(BasePortefeuille):
         montantsInvestisCumules = montantsInvestis.cumsum()
         return montantsInvestis, montantsInvestisCumules
 
-    def PlusMoinsValueCompose(self, montantsInvestis: pd.DataFrame, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def PlusMoinsValueCompose(self, montantsInvestis: pd.DataFrame, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Calcule la plus-value ou moins-value quotidienne réalisée pour chaque ticker en utilisant une composition 
-        des gains/pertes à partir du prix d'achat initial.
+        Calcule la plus-value ou moins-value composée quotidienne pour chaque ticker en utilisant les données des montants 
+        investis, des prix des tickers, et des éventuelles ventes réalisées.
 
         Args:
-            montantsInvestis (pd.DataFrame): DataFrame contenant les montants investis jusqu'au jour actuel, indexé par date.
-            prixTickers (pd.DataFrame): DataFrame contenant les prix quotidiens des actions, indexé par date.
+            montantsInvestis (pd.DataFrame): 
+                DataFrame contenant les montants investis cumulés pour chaque ticker, indexé par date.
+                - Les lignes représentent les dates.
+                - Les colonnes représentent les tickers.
+
+            prixTickers (pd.DataFrame): 
+                DataFrame contenant les prix quotidiens des actions pour chaque ticker, indexé par date.
+                - Les lignes représentent les dates.
+                - Les colonnes représentent les tickers.
 
         Returns:
-            tuple: (pd.DataFrame, pd.DataFrame)
-                - pd.DataFrame: DataFrame avec les dates en index et les tickers en colonnes, contenant la valeur globale 
-                                d'investissement composée au fil des jours pour chaque action.
-                - pd.DataFrame: DataFrame avec les dates en index et les tickers en colonnes, contenant la plus-value ou 
-                                moins-value composée au fil des jours pour chaque action.
+            tuple: (pd.DataFrame, pd.DataFrame, pd.DataFrame)
+                - pd.DataFrame: Évolution quotidienne de la valeur totale composée des montants investis pour chaque ticker.
+                                Les dates sont en index, et les tickers en colonnes.
+                - pd.DataFrame: Montants des ventes réalisées pour chaque ticker, incluant les frais associés. 
+                                Les dates sont en index, et les tickers en colonnes.
+                - pd.DataFrame: Plus-value ou moins-value composée calculée quotidiennement pour chaque ticker.
+                                Les dates sont en index, et les tickers en colonnes.
         """
         assert isinstance(montantsInvestis, pd.DataFrame), "montantsInvestis doit être un DataFrame"
         assert isinstance(prixTickers, pd.DataFrame), "prixTickers doit être un DataFrame"
@@ -88,7 +101,10 @@ class MonPortefeuille(BasePortefeuille):
         
         # Initialiser le DataFrame pour stocker les valeurs composées de plus/moins-value
         evolutionArgentsInvestisTickers = pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
+        evolutionVentesTickers = pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
         evolutionGainsPertesTickers = pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
+
+        frais = self.RecuperationTickerFrais(self.repertoireJson + "Ordres de ventes.json")
 
         # Calcul de la plus-value composée pour chaque jour
         for ticker in prixTickers.columns:
@@ -117,17 +133,18 @@ class MonPortefeuille(BasePortefeuille):
                     montantsInvestisCumules += montantsInvestis.loc[dateActuelle, ticker]
 
                 if dateActuelle in datesVentesPrix:
-                    enleverArgentTicker = datesVentesPrix[dateActuelle]
+                    enleverArgentTicker = (datesVentesPrix[dateActuelle] + frais[ticker][dateActuelle])
                     evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] -= enleverArgentTicker
+                    evolutionVentesTickers.loc[dateActuelle, ticker] = (enleverArgentTicker - frais[ticker][dateActuelle])
 
-                    if ((evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] - enleverArgentTicker) <= 0) or (ticker == "SW.PA"):
+                    if ((evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] - enleverArgentTicker) <= 0):
                         evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] = 0
                         montantsInvestisCumules = 0
 
         evolutionArgentsInvestisTickers = evolutionArgentsInvestisTickers.replace(0, np.nan)
         evolutionGainsPertesTickers = evolutionGainsPertesTickers.replace(0, np.nan)
 
-        return evolutionArgentsInvestisTickers, evolutionGainsPertesTickers
+        return evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers
 
     def PlusValuesEncaisseesBrut(self) -> pd.Series:
         """
@@ -235,4 +252,42 @@ class MonPortefeuille(BasePortefeuille):
                 argentsCompteBancaire.loc[date:] = 0
 
         return argentsCompteBancaire
+    
+    @staticmethod
+    def SommeInvestissementParDate(dictionnaireInvestissements: dict) -> dict:
+        """
+        Crée un nouveau dictionnaire avec les dates comme clés et la somme des montants investis à chaque date comme valeurs.
+
+        Args:
+            dictionnaireInvestissements (dict): Dictionnaire où chaque clé représente un actif et les valeurs sont
+                                                des sous-dictionnaires avec des dates et les montants investis à ces dates.
+
+        Returns:
+            dict: Dictionnaire avec les dates comme clés (format 'YYYY-MM-DD') et les sommes des montants investis à chaque date.
+        """
+        # Assertion pour vérifier les types des entrées
+        assert isinstance(dictionnaireInvestissements, dict), "Le paramètre dictionnaireInvestissements doit être un dictionnaire."
+
+        # Utilisation de defaultdict pour gérer la somme par date
+        investissementParDate = defaultdict(float)
+
+        # Parcours du dictionnaire d'investissements
+        for actif, investissements in dictionnaireInvestissements.items():
+            assert isinstance(actif, str), "Les clés du dictionnaire principal doivent être des chaînes de caractères représentant les actifs."
+            assert isinstance(investissements, dict), f"Les valeurs associées à l'actif '{actif}' doivent être des dictionnaires."
+
+            for date, montant in investissements.items():
+                assert isinstance(date, (pd.Timestamp, str)), f"La clé '{date}' dans les investissements de l'actif '{actif}' doit être une date (datetime ou string 'YYYY-MM-DD')."
+                assert isinstance(montant, (int, float)), f"Le montant associé à la date '{date}' doit être un nombre (int ou float)."
+
+                # Si la date est une chaîne de caractères, la convertir en datetime
+                if isinstance(date, str):
+                    date = pd.to_datetime(date)
+
+                # Ajouter le montant à la date correspondante
+                investissementParDate[date] += montant
+
+        # Conversion en dictionnaire classique et tri par les clés
+        return dict(sorted(investissementParDate.items()))
+    
     

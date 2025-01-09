@@ -1,9 +1,8 @@
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
-
 
 class RecuperationDonnees:
     """
@@ -11,21 +10,33 @@ class RecuperationDonnees:
     Elle télécharge les données à partir d'Internet ou les charge à partir de fichiers JSON existants.
     """
 
-    def DownloadTickersPrice(self, tickers: list) -> pd.DataFrame:
+    def __init__(self, repertoireJson: str):
+        """
+        Initialise l'objet avec un répertoire JSON pour charger ou enregistrer les données.
+
+        Args:
+            repertoireJson (str): Chemin vers le répertoire contenant les fichiers JSON.
+        """
+        assert isinstance(repertoireJson, str), "repertoireJson doit être une chaîne de caractères."
+        self.repertoireJson = repertoireJson
+
+
+    def DownloadTickersPrice(self, tickers: list, startDate: datetime, endDate: datetime) -> pd.DataFrame:
         """
         Télécharge les prix de clôture des actions spécifiées sur une période donnée.
 
         Args:
             tickers (list): Liste des symboles boursiers à télécharger.
+            startDate (datetime): Date de début du téléchargement.
+            endDate (datetime): Date de fin du téléchargement.
 
         Returns:
             pd.DataFrame: Un DataFrame contenant les prix de clôture des actions spécifiées,
             avec les dates manquantes complétées et les prix éventuellement convertis en EUR.
         """
         assert isinstance(tickers, list) and all(isinstance(ticker, str) for ticker in tickers), "tickers doit être une liste de chaînes de caractères"
-
-        startDate = self.startDate
-        endDate = self.endDate
+        assert isinstance(startDate, datetime), "startDate doit être  un objet datetime"
+        assert isinstance(endDate, datetime), "endDate doit être un objet datetime"
 
         # Téléchargement des données pour plusieurs tickers ou un seul
         if len(tickers) > 1:
@@ -42,10 +53,7 @@ class RecuperationDonnees:
         allDates = pd.date_range(start=startDate, end=endDate, freq='D')
         prixTickers = prixTickers.reindex(allDates).ffill().bfill()
 
-        # Conversion des prix en EUR si nécessaire
-        prixTickers = self.ConversionMonnaieDollardEuro(prixTickers, startDate, endDate)
-
-        return prixTickers
+        return self.ConversionMonnaieDollardEuro(prixTickers, startDate, endDate)
 
     @staticmethod
     def ConversionMonnaieDollardEuro(df: pd.DataFrame, startDate: datetime, endDate: datetime) -> pd.DataFrame:
@@ -85,8 +93,40 @@ class RecuperationDonnees:
 
         return df
     
+    def DownloadTickersSMA(self, startDate: datetime, endDate: datetime, tickers: list, sma: list) -> pd.DataFrame:
+        """
+        Calcule la moyenne mobile simple (SMA) pour chaque ticker dans le DataFrame des prix des tickers
+        sur une période donnée.
 
-    
+        Args:
+            startDate (datetime): La date de début pour le calcul de la SMA.
+            endDate (datetime): La date de fin pour le calcul de la SMA.
+            tickers (list): Liste des symboles boursiers à télécharger.
+            sma (list): Liste des périodes (en jours) pour lesquelles calculer la SMA.
+
+        Returns:
+            pd.DataFrame: DataFrame contenant les SMA calculées pour chaque période et chaque ticker.
+        """
+        assert isinstance(startDate, datetime), "startDate doit être  un objet datetime"
+        assert isinstance(endDate, datetime), "endDate doit être un objet datetime"
+        assert isinstance(tickers, list) and all(isinstance(ticker, str) for ticker in tickers), "tickers doit être une liste de chaînes de caractères"
+        assert isinstance(sma, list) and all(isinstance(smaJour, int) for smaJour in sma), "sma doit être une liste d'entiers"
+
+        prixTickers = self.DownloadTickersPrice(tickers, (startDate - timedelta(max(sma) + 50)), endDate)
+        smaDf = pd.DataFrame()  # Initialiser avec les mêmes index que tickerPriceDf
+
+        for nbJour in sma:
+            # Calculer la moyenne mobile pour chaque ticker (chaque colonne de tickerPriceDf)
+            moyenneMobile = prixTickers.rolling(window=nbJour).mean()
+            
+            # Ajouter chaque colonne SMA avec un suffixe du nombre de jours
+            for col in moyenneMobile.columns:
+                smaDf[f"{col}_SMA_{nbJour}"] = moyenneMobile[col]
+
+        return smaDf
+
+
+
     def RecuperationTickerBuySell(self, fichierJsonAchatsVentes: str) -> dict:
         """
         Récupère les données de transactions par ticker depuis un fichier JSON.
@@ -97,21 +137,74 @@ class RecuperationDonnees:
         Returns:
             dict: Un dictionnaire où chaque clé est un ticker, et chaque valeur est un dictionnaire contenant les dates et les prix.
         """
+        # Assertions pour vérifier les préconditions
+        assert isinstance(fichierJsonAchatsVentes, str), f"fichierJsonAchatsVentes doit être une chaîne de caractères: ({fichierJsonAchatsVentes})"
+        assert os.path.exists(fichierJsonAchatsVentes), f"Le fichier {fichierJsonAchatsVentes} n'existe pas."
+        assert fichierJsonAchatsVentes.endswith('.json'), f"Le fichier {fichierJsonAchatsVentes} doit avoir l'extension .json."
+
+        # Extraire les données du fichier JSON
+        data = self.ExtraireDonneeJson(fichierJsonAchatsVentes)
+        assert isinstance(data, list), f"Les données extraites doivent être une liste: ({type(data)})"
+
+        result = {}
+
+        # Parcours de chaque élément dans la liste de données
+        for entry in data:
+            assert isinstance(entry, dict), f"Chaque élément des données doit être un dictionnaire: ({type(entry)})"
+            assert "Ticker" in entry, f"Chaque entrée doit contenir la clé 'Ticker': ({entry})"
+            assert "Date d'exécution" in entry, f"Chaque entrée doit contenir la clé 'Date d'exécution': ({entry})"
+            assert "Montant investi" in entry or "Montant gagné" in entry, f"L'entrée doit contenir 'Montant investi' ou 'Montant gagné': ({entry})"
+            
+            ticker = entry["Ticker"]
+            dateExecution = pd.to_datetime(entry["Date d'exécution"])
+
+            # Détermination du montant en fonction du fichier
+            if fichierJsonAchatsVentes == (self.repertoireJson + "Ordres d'achats.json"):
+                montant = abs(entry["Montant investi"])
+            else:
+                montant = abs(entry["Montant gagné"])
+
+            # Si le ticker n'est pas encore dans le dictionnaire, on l'ajoute avec une valeur vide
+            if ticker not in result:
+                result[ticker] = {}
+
+            # Mise à jour du dictionnaire pour ce ticker
+            if dateExecution in result[ticker]:
+                result[ticker][dateExecution] += montant
+            else:
+                result[ticker][dateExecution] = montant
+
+        # Retourner les données triées par date pour chaque ticker
+        return {ticker: dict(sorted(dates.items())) for ticker, dates in result.items()}
+
+    def RecuperationTickerFrais(self, fichierJsonAchatsVentes: str) -> dict:
+        """
+        Récupère les données des frais de transactions par ticker depuis un fichier JSON.
+
+        Args:
+            fichierJsonAchatsVentes (str): Chemin vers le fichier JSON contenant les frais transactions.
+
+        Returns:
+            dict: Un dictionnaire où chaque clé est un ticker, et chaque valeur est un dictionnaire contenant les dates et les frais.
+        """
         assert isinstance(fichierJsonAchatsVentes, str), f"fichierJsonAchatsVentes doit être une chaîne de caractères: ({fichierJsonAchatsVentes})"
         assert os.path.exists(fichierJsonAchatsVentes) and fichierJsonAchatsVentes.endswith('.json'), f"Le fichier {fichierJsonAchatsVentes} n'existe pas ou n'a pas l'extension .json."
 
         data = self.ExtraireDonneeJson(fichierJsonAchatsVentes)
+        assert isinstance(data, list), f"Les données extraites doivent être une liste: ({type(data)})"
         result = {}
-        
+
         # Parcours de chaque élément dans la liste de données
         for entry in data:
+            assert isinstance(entry, dict), f"Chaque élément des données doit être un dictionnaire: ({type(entry)})"
+            assert "Ticker" in entry, f"Chaque entrée doit contenir la clé 'Ticker': ({entry})"
+            assert "Date d'exécution" in entry, f"Chaque entrée doit contenir la clé 'Date d'exécution': ({entry})"
+            assert "Frais" in entry, f"L'entrée doit contenir 'Montant investi' ou 'Montant gagné': ({entry})"
+
             ticker = entry["Ticker"]
             dateExecution = pd.to_datetime(entry["Date d'exécution"])
 
-            if fichierJsonAchatsVentes == (self.repertoireJson + "Ordres d'achats.json"):
-                montant = abs(entry["Montant investi"])  # On prend la valeur absolue du montant investi
-            else:
-                montant = abs(entry["Montant gagné"])
+            montant = abs(entry["Frais"])  # On prend la valeur absolue du montant investi
             
             # Si le ticker n'est pas encore dans le dictionnaire, on l'ajoute avec une valeur vide
             if ticker not in result:
@@ -176,8 +269,6 @@ class RecuperationDonnees:
         Returns:
             float: La différence entre la somme des prix d'achat et la somme des prix de vente.
         """
-        assert isinstance(self.datesAchats, dict), "datesAchats doit être un dictionnaire"
-        assert isinstance(self.datesVentes, dict), "datesVentes doit être un dictionnaire"
 
         totalBuy = 0.0
         totalSell = 0.0
