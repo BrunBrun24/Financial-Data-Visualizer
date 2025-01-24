@@ -4,10 +4,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 class MoyenneMobile(BasePortefeuille):
-    
-    def __init__(self):
-        super().__init__()
-        
 
     ########## MovingAveragePullbackStrategyUP ##########
     def MovingAveragePullbackStrategyUP(self, nbJourSMA: int):

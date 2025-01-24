@@ -3,10 +3,6 @@ from .basePortefeuille import BasePortefeuille
 import pandas as pd
 
 class Replication(BasePortefeuille):
-    
-    def __init__(self):
-        super().__init__()
-        
         
     def ReplicationDeMonPortefeuille(self):
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""

@@ -4,14 +4,10 @@ from .graphiquesTickers import GraphiquesTickers
 import os
 
 class GraphiquesDashboard(GraphiquesPortefeuilles, GraphiquesTickers):
-    def __init__(self, tickersTWR, prixNetTickers, prixBrutTickers, dividendesTickers, 
-                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestisTickers, 
-                 pourcentagesMensuelsPortefeuille, prixFifoTickers, montantsInvestisTickers, cash):
-        super().__init__(tickersTWR, prixNetTickers, prixBrutTickers, dividendesTickers, 
-                 portefeuilleTWR, prixNetPortefeuille, soldeCompteBancaire, fondsInvestisTickers, 
-                 pourcentagesMensuelsPortefeuille, prixFifoTickers, montantsInvestisTickers, cash)
+    
+    def __init__(self):
+        GraphiquesTickers.__init__(self)
         
-
     def PlotlyInteractive(self, nomDossier: str, nomFichier: str):
         """
         Crée un graphique interactif utilisant Plotly pour visualiser différents aspects de l'évolution du portefeuille en l'enregistrant dans un fichier html.

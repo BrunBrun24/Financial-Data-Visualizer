@@ -5,10 +5,6 @@ from datetime import datetime
 
 class DollarCostAveraging(BasePortefeuille):
     
-    def __init__(self):
-        super().__init__()
-    
-    
     def DCA(self):
         """
         Cette méthode permet de simuler un investissement en Dollar Cost Average (DCA) en fonction de différents portefeuilles.

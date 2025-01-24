@@ -7,10 +7,6 @@ from collections import defaultdict
 
 class MonPortefeuille(BasePortefeuille):
     
-    def __init__(self):
-        super().__init__()
-
-    
     def MonPortefeuille(self):
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""
 
@@ -21,7 +17,7 @@ class MonPortefeuille(BasePortefeuille):
         # Calcul des montants
         evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers = self.PlusMoinsValueCompose(montantsInvestisTickers, self.prixTickers)
         evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
-        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1)# + self.PlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers).cumsum(axis=0).sum(axis=1)
+        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1) + self.PlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers).cumsum(axis=0).sum(axis=1)
 
         # Calcul des pourcentages
         evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)

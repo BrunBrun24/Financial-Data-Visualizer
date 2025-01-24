@@ -3,10 +3,6 @@ from .basePortefeuille import BasePortefeuille
 import pandas as pd
 
 class LumpSumInvesting(BasePortefeuille):
-    
-    def __init__(self):
-        super().__init__()
-
 
     def LumpSum(self):
         """

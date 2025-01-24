@@ -5,10 +5,6 @@ from datetime import datetime
 
 class DollarCostValue(BasePortefeuille):
     
-    def __init__(self):
-        super().__init__()
-
-    
     def DCV(self):
         """
         Cette méthode permet de simuler un investissement en Dollar-Cost Value ou Dynamic Cost Averaging (DCV) en fonction de différents portefeuilles sur différentes plages de date.
