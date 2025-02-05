@@ -325,7 +325,7 @@ class RecuperationDonnees:
                 dividendes.index = dividendes.index.tz_localize(None)
 
             # Filtrage des dividendes dans la plage de dates spécifiée
-            dividendes = dividendes.loc[evolutionPrixBrutTickers.index.min():evolutionPrixBrutTickers.index.max()]
+            dividendes = dividendes.loc[tickerPriceDf.index.min():tickerPriceDf.index.max()]
 
             # Ajout des dividendes au DataFrame, avec propagation aux dates suivantes
             for date, montantDividendes in dividendes.items():

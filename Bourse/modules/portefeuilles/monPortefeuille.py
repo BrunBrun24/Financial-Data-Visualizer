@@ -4,24 +4,131 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 from collections import defaultdict
+import os
+import time
 
 class MonPortefeuille(BasePortefeuille):
     
-    def MonPortefeuille(self):
+    def MonPortefeuille(self, repertoireJson: str):
         """Cette méthode permet de simuler en fonction de différents portefeuilles, un investissement d'après les mêmes dates d'achats et de ventes dans mon portefeuille initiale"""
+
+        repertoireMonPortefeuille = (repertoireJson + "Mon Portefeuille/")
+        if not os.path.isdir(repertoireMonPortefeuille):
+            raise FileNotFoundError(f"Le dossier '{repertoireMonPortefeuille}' n'existe pas")
+        if any(f.endswith('.json') for f in os.listdir(repertoireMonPortefeuille)):
+            # Récupère les données de mon ancien portefeuille s'il en existe
+            startDate = self.DownloadDataJson("montantsInvestisTickers", repertoireMonPortefeuille).index[-3]
+        else:
+            startDate = self.startDate
 
         nomPortefeuille = "Mon Portefeuille"
 
-        montantsInvestisTickers, montantsInvestisCumules = self.PrixMoyenPondereAchat()
+        montantsInvestisTickers, montantsInvestisCumules = self.PrixMoyenPondereAchat(self.prixTickers.loc[startDate:])
 
         # Calcul des montants
-        evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers = self.PlusMoinsValueCompose(montantsInvestisTickers, self.prixTickers)
-        evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
-        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1) + self.PlusValuesEncaisseesNet() + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers).cumsum(axis=0).sum(axis=1)
+        evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers = self.PlusMoinsValueComposeAA(montantsInvestisTickers.loc[startDate:], self.prixTickers.loc[startDate:])
+        evolutionArgentsInvestisTickers = evolutionArgentsInvestisTickers.loc[startDate:]
+        evolutionGainsPertesTickers = evolutionGainsPertesTickers.loc[startDate:]
 
+        evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisTickers.sum(axis=1)
+
+        startTime = time.time()  # Début du chronomètre
+        evolutionGainsPertesPortefeuille = evolutionGainsPertesTickers.sum(axis=1) + self.PlusValuesEncaisseesNet().loc[startDate:] + self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers.loc[startDate:]).cumsum(axis=0).sum(axis=1)
+
+        endTime = time.time()  # Fin du chronomètre
+        executionTime = endTime - startTime  # Temps total d'exécution
+
+        print(f"Temps d'exécution : {executionTime:.2f} secondes")
+        
         # Calcul des pourcentages
-        evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules)
+        evolutionPourcentageTickers = self.CalculerEvolutionPourcentageTickers(evolutionArgentsInvestisTickers, montantsInvestisCumules.loc[startDate:])
         evolutionPourcentagePortefeuille = self.CalculerEvolutionPourcentagePortefeuille(evolutionGainsPertesPortefeuille, self.CalculateNetInvestment())
+
+
+        if any(f.endswith('.json') for f in os.listdir(repertoireMonPortefeuille)):
+            evolutionArgentsInvestisTickers.fillna(self.DownloadDataJson("prixBrutTickers", repertoireMonPortefeuille), inplace=True)
+            evolutionVentesTickers.fillna(self.DownloadDataJson("montantsVentesTickers", repertoireMonPortefeuille), inplace=True)
+
+            evolutionGainsPertesTickers = pd.concat([
+                evolutionGainsPertesTickers, 
+                self.DownloadDataJson("prixNetTickers", repertoireMonPortefeuille)
+            ]).sort_index()
+            evolutionGainsPertesTickers = evolutionGainsPertesTickers[~evolutionGainsPertesTickers.index.duplicated(keep='first')]
+            evolutionGainsPertesTickers.replace(0, np.nan, inplace=True)
+
+            evolutionPourcentageTickers = pd.concat([
+                evolutionPourcentageTickers, 
+                self.DownloadDataJson("tickersTWR", repertoireMonPortefeuille)
+            ]).sort_index()
+            evolutionPourcentageTickers = evolutionPourcentageTickers[~evolutionPourcentageTickers.index.duplicated(keep='first')]
+            evolutionPourcentageTickers.replace(0, np.nan, inplace=True)
+            # Boucle sur chaque colonne pour insérer un 0 avant la première valeur valide
+            for col in evolutionPourcentageTickers.columns:
+                firstValidIndex = evolutionPourcentageTickers[col].first_valid_index()  # Trouver le premier index valide
+                if firstValidIndex is not None:  # Vérifier qu'on a bien une valeur valide
+                    firstValidLoc = evolutionPourcentageTickers.index.get_loc(firstValidIndex)  # Convertir en position numérique
+                    if firstValidLoc > 0:  # Vérifier qu'on peut insérer un 0 avant
+                        evolutionPourcentageTickers.iloc[firstValidLoc - 1, evolutionPourcentageTickers.columns.get_loc(col)] = 0  # Mettre 0 juste avant
+
+            evolutionArgentsInvestisTickers = pd.concat([
+                evolutionArgentsInvestisTickers, 
+                self.DownloadDataJson("prixBrutTickers", repertoireMonPortefeuille)
+            ]).sort_index()
+            evolutionArgentsInvestisTickers = evolutionArgentsInvestisTickers[~evolutionArgentsInvestisTickers.index.duplicated(keep='first')]
+            
+            montantsInvestisCumules = pd.concat([
+                montantsInvestisCumules, 
+                self.DownloadDataJson("montantsInvestisTickers", repertoireMonPortefeuille).cumsum()
+            ]).sort_index()
+            montantsInvestisCumules = montantsInvestisCumules[~montantsInvestisCumules.index.duplicated(keep='first')]
+            
+            montantsInvestisTickers = pd.concat([
+                montantsInvestisTickers, 
+                self.DownloadDataJson("montantsInvestisTickers", repertoireMonPortefeuille)
+            ]).sort_index()
+            montantsInvestisTickers = montantsInvestisTickers[~montantsInvestisTickers.index.duplicated(keep='first')]
+
+
+            ### Pour mon portefeuille ###
+
+            newData = self.DownloadDataJson("portefeuilleTWR", repertoireMonPortefeuille)  
+            newData.index = pd.to_datetime(newData.index)  
+            # S'assurer que ce sont bien des Series
+            evolutionPourcentagePortefeuille = evolutionPourcentagePortefeuille.squeeze()
+            newData = newData.squeeze()
+            # Fusionner en conservant une seule colonne
+            evolutionPourcentagePortefeuille = (
+                evolutionPourcentagePortefeuille.loc[startDate:]
+                .combine_first(newData)  # Remplit les valeurs manquantes avec newData si possible
+                .sort_index()
+            )
+            # Vérifier et renommer si nécessaire
+            if isinstance(evolutionPourcentagePortefeuille, pd.DataFrame):
+                evolutionPourcentagePortefeuille = evolutionPourcentagePortefeuille.iloc[:, 0]  # Prendre la seule colonne
+            # Suppression des doublons d'index
+            evolutionPourcentagePortefeuille = evolutionPourcentagePortefeuille[~evolutionPourcentagePortefeuille.index.duplicated(keep='first')]
+
+            newData = self.DownloadDataJson("prixNetPortefeuille", repertoireMonPortefeuille)
+            newData.index = pd.to_datetime(newData.index)
+            evolutionGainsPertesPortefeuille = pd.concat([
+                evolutionGainsPertesPortefeuille.loc[startDate:], 
+                newData
+            ]).sort_index()
+            evolutionGainsPertesPortefeuille = evolutionGainsPertesPortefeuille[~evolutionGainsPertesPortefeuille.index.duplicated(keep='first')]
+            
+            newData = self.DownloadDataJson("soldeCompteBancaire", repertoireMonPortefeuille)
+            newData.index = pd.to_datetime(newData.index)
+            evolutionArgentsInvestisPortefeuille = pd.concat([
+                self.EvolutionDepotEspeces().loc[startDate:] + evolutionArgentsInvestisPortefeuille + self.PlusValuesEncaisseesBrut().loc[startDate:], 
+                newData
+            ]).sort_index()
+            evolutionArgentsInvestisPortefeuille = evolutionArgentsInvestisPortefeuille[~evolutionArgentsInvestisPortefeuille.index.duplicated(keep='first')]
+
+            self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
+        else:
+            self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
+            evolutionArgentsInvestisPortefeuille = self.EvolutionDepotEspeces().loc[startDate:] + evolutionArgentsInvestisPortefeuille + self.PlusValuesEncaisseesBrut().loc[startDate:]
+        
         
         # On stock les DataFrames
         self.portefeuilleTWR[nomPortefeuille] = evolutionPourcentagePortefeuille
@@ -30,15 +137,14 @@ class MonPortefeuille(BasePortefeuille):
         self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
         self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers)
-        self.pourcentagesMensuelsPortefeuille[nomPortefeuille] = self.CalculerEvolutionPourcentageMois(evolutionArgentsInvestisPortefeuille, self.SommeInvestissementParDate(self.datesAchats), self.SommeInvestissementParDate(self.datesVentes))
         self.prixFifoTickers[nomPortefeuille] = self.CalculerPrixFifoTickers(montantsInvestisTickers)
         self.fondsInvestisTickers[nomPortefeuille] = montantsInvestisCumules
         self.montantsInvestisTickers[nomPortefeuille] = montantsInvestisTickers
         self.montantsVentesTickers[nomPortefeuille] = evolutionVentesTickers
-        self.soldeCompteBancaire[nomPortefeuille] = (self.EvolutionDepotEspeces() + evolutionArgentsInvestisPortefeuille + self.PlusValuesEncaisseesBrut())
+        self.soldeCompteBancaire[nomPortefeuille] = evolutionArgentsInvestisPortefeuille
         self.cash[nomPortefeuille] = self.PlusValuesEncaisseesBrut()
 
-    def PrixMoyenPondereAchat(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def PrixMoyenPondereAchat(self, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Calcule le prix moyen pondéré d'achat pour chaque ticker dans le portefeuille.
         Cette méthode télécharge les prix de clôture pour chaque ticker, puis calcule le montant investi cumulé
@@ -51,8 +157,6 @@ class MonPortefeuille(BasePortefeuille):
         """
 
         datesInvestissementsPrix = self.datesAchats.copy()
-        prixTickers = self.prixTickers
-
         montantsInvestis = pd.DataFrame(0.0, index=prixTickers.index, columns=prixTickers.columns, dtype=float)
 
         # Calcul du prix moyen pondéré pour chaque date d'achat
@@ -61,6 +165,8 @@ class MonPortefeuille(BasePortefeuille):
             for date, montant in datesInvestissements.items():
                 montantsInvestis.at[date, ticker] = montant
 
+        montantsInvestis.fillna(0.0, inplace=True)
+        montantsInvestis.sort_index(inplace=True)
         montantsInvestisCumules = montantsInvestis.cumsum()
         return montantsInvestis, montantsInvestisCumules
 
@@ -286,4 +392,124 @@ class MonPortefeuille(BasePortefeuille):
         # Conversion en dictionnaire classique et tri par les clés
         return dict(sorted(investissementParDate.items()))
     
+    
+
+    def PlusMoinsValueComposeAA(self, montantsInvestis: pd.DataFrame, prixTickers: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        
+        assert isinstance(montantsInvestis, pd.DataFrame), "montantsInvestis doit être un DataFrame"
+        assert isinstance(prixTickers, pd.DataFrame), "prixTickers doit être un DataFrame"
+        
+        evolutionArgentsInvestisTickers = self.RecuperationDataFrame("prixBrutTickers", prixTickers)
+        evolutionVentesTickers = self.RecuperationDataFrame("montantsVentesTickers", prixTickers)
+        evolutionGainsPertesTickers = self.RecuperationDataFrame("prixNetTickers", prixTickers)
+        frais = self.RecuperationTickerFrais(self.repertoireJson + "Ordres de ventes.json")
+
+        if (montantsInvestis.index[0] != evolutionGainsPertesTickers.index[0]):
+            # Récupère les tickers qui ont toujours de l'argent investis
+            tickers = [ticker for ticker in evolutionGainsPertesTickers.columns if evolutionGainsPertesTickers[ticker].iloc[-1] != 0.0]
+        else:
+            tickers = list(prixTickers.columns)
+
+        # Calcul de la plus-value composée pour chaque jour
+        for ticker in tickers:
+            datesVentesPrix = self.datesVentes[ticker] if ticker in self.datesVentes else {}
+            
+            # Vérifier si la première ligne ne contient pas des valeurs pour le ticker actuel
+            if (montantsInvestis.index[0] == evolutionGainsPertesTickers.index[0]):
+                # Initialiser avec la valeur d'achat initiale pour chaque ticker
+                evolutionArgentsInvestisTickers.loc[prixTickers.index[0], ticker] = montantsInvestis.loc[prixTickers.index[0], ticker]
+                evolutionGainsPertesTickers.loc[prixTickers.index[0], ticker] = 0
+
+                montantsInvestisCumules = montantsInvestis.loc[prixTickers.index[0], ticker]
+            else:
+                temp, _ = self.PrixMoyenPondereAchat(self.prixTickers)
+                montantsInvestisCumules = temp[ticker].sum()
+
+            for i in range(1, len(prixTickers.index)):
+                datePrecedente = prixTickers.index[i-1]
+                dateActuelle = prixTickers.index[i]
+
+                # Calcul de l'évolution en pourcentage entre le jour actuel et le jour précédent
+                evolutionPourcentage = (prixTickers.loc[dateActuelle, ticker] / prixTickers.loc[datePrecedente, ticker]) - 1
+                
+                # Calcule l'évolution globale du portefeuille
+                evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] = evolutionArgentsInvestisTickers.loc[datePrecedente, ticker] * (1 + evolutionPourcentage)
+                # Calcule l'évolution des moins plus values
+                evolutionGainsPertesTickers.loc[dateActuelle, ticker] = (evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] - montantsInvestisCumules)
+                
+                if montantsInvestis.loc[datePrecedente, ticker] != montantsInvestis.loc[dateActuelle, ticker]:
+                    evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] += montantsInvestis.loc[dateActuelle, ticker]
+                    montantsInvestisCumules += montantsInvestis.loc[dateActuelle, ticker]
+
+                if dateActuelle in datesVentesPrix:
+                    enleverArgentTicker = (datesVentesPrix[dateActuelle] + frais[ticker][dateActuelle])
+                    evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] -= enleverArgentTicker
+                    evolutionVentesTickers.loc[dateActuelle, ticker] = (enleverArgentTicker - frais[ticker][dateActuelle])
+
+                    if ((evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] - enleverArgentTicker) <= 0):
+                        evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] = 0
+                        montantsInvestisCumules = 0
+
+        evolutionArgentsInvestisTickers = evolutionArgentsInvestisTickers.replace(0, np.nan)
+        evolutionGainsPertesTickers = evolutionGainsPertesTickers.replace(0, np.nan)
+
+        return evolutionArgentsInvestisTickers, evolutionVentesTickers, evolutionGainsPertesTickers
+    
+    
+    def DownloadDataJson(self, nameFile: str, repertoireMonPortefeuille: str):
+        filePath = os.path.join(repertoireMonPortefeuille, f"{nameFile}.json")
+        data = self.ExtraireDonneeJson(filePath)  # Extraction des données JSON
+
+        try:
+            data = pd.DataFrame(data)
+            # Vérifier si une colonne 'Date' existe
+            if "Date" in data.columns:
+                data["Date"] = pd.to_datetime(data["Date"], errors="coerce")  # Convertir la colonne 'Date' au format datetime
+                data.set_index("Date", inplace=True)  # Définir 'Date' comme index
+        except:
+            # Si les données ne sont pas convertibles en DataFrame, essayer de les transformer en Series
+            data = pd.Series(data)
+
+        return data
+
+    @staticmethod
+    def FilterDictionaryByDate(data: dict, referenceDate: datetime) -> dict:
+        """
+        Filtre un dictionnaire pour ne conserver que les clés dont les dates associées
+        sont toutes supérieures ou égales à une date donnée.
+
+        Args:
+            data (dict): Dictionnaire avec des clés et des dates associées sous forme de Timestamp.
+            referenceDate (datetime): Date de référence pour le filtrage.
+
+        Returns:
+            dict: Nouveau dictionnaire filtré.
+        """
+        assert isinstance(data, dict), "Le paramètre 'data' doit être un dictionnaire"
+        assert isinstance(referenceDate, datetime), "Le paramètre 'referenceDate' doit être de type datetime"
+
+        filteredData = {}
+        
+        for key, datesDict in data.items():
+            # Vérifie si toutes les dates sont >= à la date de référence
+            if all(date >= referenceDate for date in datesDict.keys()):
+                # Conserve uniquement les paires (date, valeur) valides
+                filteredData[key] = {date: value for date, value in datesDict.items() if date >= referenceDate}
+        
+        return filteredData
+    
+    
+    def RecuperationDataFrame(self, nameFile: str, prixTickers: pd.DataFrame):
+        filePath = os.path.join((self.repertoireJson + "Mon Portefeuille/"), f"{nameFile}.json")
+        if not os.path.exists(filePath):
+            return pd.DataFrame(index=prixTickers.index, columns=prixTickers.columns, dtype=float)
+        
+        data = self.ExtraireDonneeJson(filePath)  # Extraction des données JSON
+        data = pd.DataFrame(data)
+        # Vérifier si une colonne 'Date' existe
+        if "Date" in data.columns:
+            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")  # Convertir la colonne 'Date' au format datetime
+            data.set_index("Date", inplace=True)  # Définir 'Date' comme index
+
+        return data
     

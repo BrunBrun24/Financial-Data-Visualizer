@@ -1,5 +1,5 @@
 from modules.recuperationDonnees import RecuperationDonnees
-from .graphiques.graphiquesDashboard import GraphiquesDashboard 
+from .graphiques.graphiquesDashboard import GraphiquesDashboard
 from .portefeuilles.monPortefeuille import MonPortefeuille
 from .portefeuilles.dollarCostAveraging import DollarCostAveraging
 from .portefeuilles.dollarCostValue import DollarCostValue
@@ -9,7 +9,7 @@ from .portefeuilles.replication import Replication
 import pandas as pd
 from datetime import datetime
 import os
-import copy
+import json
 
 class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuille, DollarCostAveraging, DollarCostValue, MoyenneMobile, Replication):
     """
@@ -27,11 +27,14 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
         assert os.path.isdir(repertoireJson), f"directory doit être un répertoire valide : ({repertoireJson})"
 
         RecuperationDonnees.__init__(self, repertoireJson)  # Passe la valeur au parent si nécessaire
+        GraphiquesDashboard.__init__(self)
 
-        self.startDate = self.PremiereDateDepot()
-        self.endDate = datetime.today()
+        self.repertoireJson = repertoireJson
+
         self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "Ordres d'achats.json"))
         self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "Ordres de ventes.json"))
+        self.startDate = self.PremiereDateDepot()
+        self.endDate = datetime.today()
         self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()), self.startDate, self.endDate)
 
         self.prixFifoTickers = {}
@@ -42,7 +45,7 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
         self.prixBrutTickers = {}
         self.dividendesTickers = {}
         self.fondsInvestisTickers = {}
-        
+
         self.portefeuilleTWR = pd.DataFrame(dtype=float)
         self.prixNetPortefeuille = pd.DataFrame(dtype=float)
         self.pourcentagesMensuelsPortefeuille = pd.DataFrame(dtype=float)
@@ -50,8 +53,27 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
         self.cash = pd.DataFrame(dtype=float)
 
         # Ajoute sur le graphique mon portefeuille
-        self.MonPortefeuille()
-        self.EnregistrerDataFrameEnJson(repertoireJson + "Portefeuille.json")
+        self.MonPortefeuille(repertoireJson)
+
+        # nameCompteBancaire = "Mon Portefeuille"
+        # # Dictionnaire pour enregistrer les DataFrame dans des fichiers JSON
+        # enregistrerDataFrameSerie = [
+        #     {"data": self.prixFifoTickers[nameCompteBancaire], "file": "prixFifoTickers"},
+        #     {"data": self.montantsInvestisTickers[nameCompteBancaire], "file": "montantsInvestisTickers"},
+        #     {"data": self.montantsVentesTickers[nameCompteBancaire], "file": "montantsVentesTickers"},
+        #     {"data": self.tickersTWR[nameCompteBancaire], "file": "tickersTWR"},
+        #     {"data": self.prixNetTickers[nameCompteBancaire], "file": "prixNetTickers"},
+        #     {"data": self.prixBrutTickers[nameCompteBancaire], "file": "prixBrutTickers"},
+        #     {"data": self.dividendesTickers[nameCompteBancaire], "file": "dividendesTickers"},
+        #     {"data": self.fondsInvestisTickers[nameCompteBancaire], "file": "fondsInvestisTickers"},
+        #     {"data": self.portefeuilleTWR[nameCompteBancaire], "file": "portefeuilleTWR"},
+        #     {"data": self.prixNetPortefeuille[nameCompteBancaire], "file": "prixNetPortefeuille"},
+        #     {"data": self.pourcentagesMensuelsPortefeuille[nameCompteBancaire], "file": "pourcentagesMensuelsPortefeuille"},
+        #     {"data": self.soldeCompteBancaire[nameCompteBancaire], "file": "soldeCompteBancaire"},
+        #     {"data": self.cash[nameCompteBancaire], "file": "cash"},
+        # ]
+
+        # self.EnregistrerJson(enregistrerDataFrameSerie, (repertoireJson + "Mon Portefeuille/"))
 
 
     def SetPortfolioPercentage(self, portfolioPercentage: list):
@@ -73,29 +95,93 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
 
         prixTickersUnique = self.DownloadTickersPrice(tickerUnique, self.startDate, self.endDate)
         self.prixTickers = pd.concat([self.prixTickers, prixTickersUnique], axis=1)
-    
-    def EnregistrerDataFrameEnJson(self, cheminFichierJson: str):
+
+
+
+    def EnregistrerJson(self, dataList: list, cheminFichierJson: str):
         """
-        Enregistre un DataFrame au format JSON dans le fichier spécifié, avec les dates comme clés et les montants comme valeurs.
+        Enregistre une liste de données (Series ou DataFrame) dans des fichiers JSON.
 
         Args:
-            cheminFichierJson (str): Le chemin du fichier JSON dans lequel enregistrer le DataFrame.
+            dataList (list): Une liste de dictionnaires, où chaque dictionnaire contient :
+                - "data": Les données à enregistrer (pd.Series ou pd.DataFrame).
+                - "file": Le nom du fichier (sans l'extension) où les données seront enregistrées.
+            cheminFichierJson (str): Le chemin complet du fichier JSON où la série sera sauvegardée.
         """
-        assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith(".json"), \
-            f"cheminFichierJson doit être une chaîne se terminant par '.json', mais c'est {type(cheminFichierJson)}."
+        assert isinstance(dataList, list), "dataList doit être une liste de dictionnaires."
+        assert isinstance(cheminFichierJson, str), "Le chemin du fichier doit être une chaîne de caractères."
 
-        dataFrame = copy.deepcopy(self.soldeCompteBancaire["Mon Portefeuille"])
+        for data in dataList:
+            assert isinstance(data, dict), "Chaque élément de dataList doit être un dictionnaire."
+            assert "data" in data and "file" in data, \
+                "Chaque dictionnaire doit contenir les clés 'data' (les données) et 'file' (nom du fichier)."
+            assert isinstance(data["file"], str) and data["file"].strip(), \
+                "La clé 'file' doit contenir une chaîne non vide représentant le nom du fichier."
 
-        # Convertir l'index en dates au format string et les valeurs en dictionnaire
+            filePath = os.path.join(cheminFichierJson, f"{data['file']}.json")
+
+            # Vérifier le type de données et appeler les méthodes correspondantes
+            if isinstance(data["data"], pd.Series):
+                cleanedData = data["data"].fillna(0)
+                self.EnregistreSerieEnJson(cleanedData, filePath)
+            elif isinstance(data["data"], pd.DataFrame):
+                cleanedData = data["data"].fillna(0)
+                self.EnregistreDataFrameEnJson(cleanedData, filePath)
+            else:
+                raise TypeError(f"Le type des données est invalide : attendu pd.Series ou pd.DataFrame, mais obtenu {type(data['data'])}.")
+
+    @staticmethod
+    def EnregistreSerieEnJson(serie: pd.Series, cheminFichierJson: str):
+        """
+        Enregistre une série Pandas sous format JSON dans un fichier avec un index datetime conservé.
+
+        Args:
+            serie (pd.Series): La série Pandas à enregistrer.
+            cheminFichierJson (str): Le chemin complet du fichier JSON où la série sera sauvegardée.
+        """
+        assert isinstance(serie, pd.Series), "La variable 'serie' doit être une instance de pd.Series."
+        assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith('.json'), \
+            "Le chemin du fichier doit être une chaîne de caractères se terminant par '.json'."
+
+        # Convertir l'index en datetime si nécessaire
+        if not pd.api.types.is_datetime64_any_dtype(serie.index):
+            try:
+                serie.index = pd.to_datetime(serie.index)
+            except Exception as e:
+                raise ValueError(f"Impossible de convertir l'index en datetime : {e}")
+
+        # Préparer les données pour le format JSON
+        dictData = {
+            index.strftime('%Y-%m-%d'): value
+            for index, value in serie.items()
+        }
+
+        # Écriture dans un fichier JSON
+        os.makedirs(os.path.dirname(cheminFichierJson), exist_ok=True)  # Créer les dossiers si nécessaire
+        with open(cheminFichierJson, 'w', encoding='utf-8') as f:
+            json.dump(dictData, f, indent=4, ensure_ascii=False)
+
+    @staticmethod
+    def EnregistreDataFrameEnJson(dataFrame: pd.DataFrame, cheminFichierJson: str):
+        """
+        Enregistre un DataFrame Pandas sous format JSON dans un fichier avec un index datetime conservé.
+
+        Args:
+            dataFrame (pd.DataFrame): Le DataFrame Pandas à enregistrer.
+            cheminFichierJson (str): Le chemin complet du fichier JSON où le DataFrame sera sauvegardé.
+        """
+        assert isinstance(dataFrame, pd.DataFrame), "La variable 'dataFrame' doit être une instance de pd.DataFrame."
+        assert isinstance(cheminFichierJson, str) and cheminFichierJson.endswith('.json'), \
+            "Le chemin du fichier doit être une chaîne de caractères se terminant par '.json'."
+
+        # Conversion de l'index en chaînes ISO 8601 pour JSON
         dictData = dataFrame.reset_index()
-        dictData.columns = ['Date', 'Montant']
-        dictData['Date'] = dictData['Date'].dt.strftime('%Y-%m-%d')  # Convertir les dates au format 'YYYY-MM-DD'
-        dictData = dictData.set_index('Date')['Montant'].to_dict()
+        dictData['index'] = dictData['index'].apply(lambda x: x.strftime('%Y-%m-%d'))
+        dictData = dictData.rename(columns={'index': 'Date'}).to_dict(orient='records')
 
-        # Convertir le dictionnaire en JSON et l'enregistrer
-        jsonData = pd.Series(dictData).to_json(orient='index', indent=2)
+        # Écriture dans un fichier JSON
+        os.makedirs(os.path.dirname(cheminFichierJson), exist_ok=True)  # Créer les dossiers si nécessaire
+        with open(cheminFichierJson, 'w', encoding='utf-8') as f:
+            json.dump(dictData, f, indent=4, ensure_ascii=False)
 
-        # Écrire le JSON dans le fichier
-        with open(cheminFichierJson, 'w', encoding="utf-8") as f:
-            f.write(jsonData)
-    
+

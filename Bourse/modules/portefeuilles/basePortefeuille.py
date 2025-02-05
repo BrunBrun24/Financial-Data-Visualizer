@@ -193,39 +193,34 @@ class BasePortefeuille:
         Calcule l'évolution des dividendes pour chaque ticker d'un portefeuille, basée sur les prix bruts et les dividendes distribués.
 
         Args:
-            evolutionPrixBrutTickers (pd.DataFrame): DataFrame contenant l'évolution brute des prix des tickers du portefeuille.
-            tickerPriceDf (pd.DataFrame): DataFrame contenant les prix des tickers correspondants.
+            evolutionPrixBrutTickers (pd.DataFrame): Évolution brute des prix des tickers.
+            tickerPriceDf (pd.DataFrame): Prix des tickers correspondants.
 
         Returns:
-            pd.DataFrame: DataFrame contenant l'évolution des dividendes pour chaque ticker, répartis sur les dates du portefeuille.
+            pd.DataFrame: Évolution des dividendes pour chaque ticker, répartis sur les dates du portefeuille.
         """
         assert isinstance(evolutionPrixBrutTickers, pd.DataFrame), "evolutionPrixBrutTickers doit être un DataFrame"
         assert isinstance(tickerPriceDf, pd.DataFrame), "tickerPriceDf doit être un DataFrame"
+        assert evolutionPrixBrutTickers.index.equals(tickerPriceDf.index), "Les index des DataFrames doivent être identiques"
 
-        # Vérification des types de données dans les DataFrames
-        assert all(isinstance(date, pd.Timestamp) for date in evolutionPrixBrutTickers.index), "Les index de evolutionPrixBrutTickers doivent être de type pd.Timestamp"
-
-        # Initialiser le DataFrame des dividendes avec des zéros
+        # Initialisation du DataFrame des dividendes
         tickersDividendes = pd.DataFrame(0, index=evolutionPrixBrutTickers.index, columns=evolutionPrixBrutTickers.columns, dtype=float)
 
         for ticker in evolutionPrixBrutTickers.columns:
-            # Téléchargement des données de dividendes
-            stock = yf.Ticker(ticker)
-            dividendes = stock.dividends
+            # Récupération des dividendes
+            dividendes = yf.Ticker(ticker).dividends
 
-            # S'assurer que l'index des dividendes est timezone-naive pour comparaison
-            if dividendes.index.tz is not None:
-                dividendes.index = dividendes.index.tz_localize(None)
+            if dividendes.empty:
+                continue  # Passer ce ticker s'il n'a pas de dividendes
 
-            # Filtrage des dividendes dans la plage de dates spécifiée
-            dividendes = dividendes.loc[evolutionPrixBrutTickers.index.min():evolutionPrixBrutTickers.index.max()]
+            # Suppression de la timezone si nécessaire
+            dividendes.index = dividendes.index.tz_localize(None) if dividendes.index.tz else dividendes.index
 
-            # Ajout des dividendes au DataFrame, avec propagation aux dates suivantes
-            for date, montantDividendes in dividendes.items():
-                if date in tickersDividendes.index:
-                    # Calculer et ajouter le montant du dividende
-                    montantDividendesAjoute = round(montantDividendes * evolutionPrixBrutTickers.at[date, ticker] / tickerPriceDf.at[date, ticker], 2)
-                    tickersDividendes.at[date, ticker] += montantDividendesAjoute
+            # Aligner les dividendes sur l'index des prix du portefeuille
+            dividendes = dividendes.reindex(evolutionPrixBrutTickers.index, method='ffill').fillna(0)
+
+            # Calculer le montant des dividendes en fonction des prix
+            tickersDividendes[ticker] = round(dividendes * evolutionPrixBrutTickers[ticker] / tickerPriceDf[ticker], 2)
 
         return tickersDividendes
     
