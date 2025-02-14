@@ -241,7 +241,7 @@ class GraphiquesPortefeuilles(GraphiquesBase):
         return fig
 
 
-    def GraphiqueLineairePortefeuillesMonnaie(self, df: pd.DataFrame, title="", width=1600, height=650) -> go.Figure:
+    def GraphiqueLineairePortefeuillesMonnaie(self, dfPrix: pd.DataFrame, dfArgentInvestis: pd.DataFrame, title="", width=1600, height=650) -> go.Figure:
         """
         Génère un graphique linéaire interactif avec Plotly, basé sur les données contenues dans un DataFrame.
         Pour chaque colonne de `df`, une courbe distincte est tracée, permettant de visualiser l'évolution des
@@ -249,7 +249,7 @@ class GraphiquesPortefeuilles(GraphiquesBase):
         prédéfinie, et le fond est personnalisé pour une meilleure lisibilité.
 
         Args:
-            df (pd.DataFrame): DataFrame contenant les données à tracer. Les colonnes représentent différentes séries de données.
+            dfPrix (pd.Series): Series contenant les données à tracer.
             title (str): Titre du graphique.
             suffixe (str): Suffixe à ajouté sur l'axe des ordonnées.
             width (int, optional): Largeur du graphique. Default 1600.
@@ -258,7 +258,8 @@ class GraphiquesPortefeuilles(GraphiquesBase):
         Returns:
             go.Figure: Le graphique Plotly
         """
-        assert isinstance(df, pd.DataFrame), f"df doit être un DataFrame: ({type(df)})"
+        assert isinstance(dfPrix, pd.DataFrame), f"dfPrix doit être un DataFrame: ({type(dfPrix)})"
+        assert isinstance(dfArgentInvestis, pd.Series), f"dfArgentInvestis doit être une Series: ({type(dfArgentInvestis)})"
         assert isinstance(title, str), f"title doit être une chaîne de caractères: ({type(title)})"
         assert isinstance(width, int), f"width doit être un entier: ({type(width)})"
         assert isinstance(height, int), f"height doit être un entier: ({type(height)})"
@@ -271,16 +272,27 @@ class GraphiquesPortefeuilles(GraphiquesBase):
             '#00bfff', '#ff7f50', '#9acd32', '#00ff00', '#8b008b'
         ]
 
-        for i, column in enumerate(df.columns):
+        for i, column in enumerate(dfPrix.columns):
             colorIndex = i % len(colors)
             fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df[column],
+                x=dfPrix.index,
+                y=dfPrix[column],
                 mode='lines',
                 name=column,
                 line=dict(color=colors[colorIndex], width=2.5),
                 hovertemplate=f'Ticker: {column}<br>' + 'Date: %{x}<br>Prix: %{y:.2f}' + '<extra></extra>'
             ))
+
+        # Ajout de la ligne en pointillé pour les montants investis
+        fig.add_trace(go.Scatter(
+            x=dfArgentInvestis.index,
+            y=dfArgentInvestis,
+            mode='lines',
+            name="Montants Investis",
+            line=dict(color='white', width=2.5, dash='dot'),  # Pointillé et blanc pour bien contraster
+            opacity=0.5, 
+            hovertemplate='Date: %{x}<br>Montant Investi: %{y:.2f} €<extra></extra>'
+        ))
 
         super().GenerateGraph(fig)
         fig.update_layout(

@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 
 class GraphiquesTickers(GraphiquesBase):
+    
     def __init__(self):
         self.colors = [
             '#ff00ff', '#00ffff', '#00ff7f', '#ff0000', '#0000ff', '#ffff00', '#ff1493', '#ff8c00',
@@ -318,7 +319,8 @@ class GraphiquesTickers(GraphiquesBase):
 
         dataPourcentageFiltres = dataPourcentage.dropna()
         prixFifoTickerFiltres = prixFifoTicker.reindex(index=dataPourcentageFiltres.index)
-        prixFifoTickerFiltres = prixFifoTickerFiltres[prixFifoTicker > 0].sort_index()
+        prixFifoTickerFiltres = prixFifoTickerFiltres.apply(lambda x: x[0] if isinstance(x, list) and len(x) > 0 else 0)
+        prixFifoTickerFiltres = prixFifoTickerFiltres[prixFifoTickerFiltres > 0].sort_index()
         # Tracé pour les prix FIFO du ticker
         tracePrixFifo = go.Scatter(
             x=prixFifoTickerFiltres.index,
@@ -334,7 +336,8 @@ class GraphiquesTickers(GraphiquesBase):
         # Trier les montants investis pour ne garder que les dates où des investissements ont eu lieu
         montantsInvestisFiltres = montantsInvestisTicker[montantsInvestisTicker > 0].sort_index()
         # Extraire les prix du ticker aux dates d'investissements
-        prixAuxDatesInvestissements = prixTicker.loc[montantsInvestisFiltres.index]
+        prixFifoTickerFiltres = prixFifoTicker.apply(lambda x: x[1] if isinstance(x, list) and len(x) > 0 else 0)
+        prixAuxDatesInvestissements = prixFifoTickerFiltres.loc[montantsInvestisFiltres.index]
         # Tracé pour les points d'investissements sur le graphique du prix de l'action
         traceInvestissements = go.Scatter(
             x=prixAuxDatesInvestissements.index,

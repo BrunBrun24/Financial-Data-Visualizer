@@ -26,7 +26,7 @@ class GraphiquesDashboard(GraphiquesPortefeuilles, GraphiquesTickers):
         portefeuillesGraphiquesHtml = []
 
         # Ajout des graphiques
-        portefeuillesGraphiquesHtml.append(self.GraphiqueLineairePortefeuillesMonnaie(self.soldeCompteBancaire, "Progression de l'argent sur le Compte", 1880, 900))
+        portefeuillesGraphiquesHtml.append(self.GraphiqueLineairePortefeuillesMonnaie(self.soldeCompteBancaire, self.montantsInvestisPortefeuille, "Progression de l'argent sur le Compte", 1880, 900))
         portefeuillesGraphiquesHtml.append(self.GraphiqueDfPourcentageMonnaie(self.portefeuilleTWR, self.prixNetPortefeuille, "Progression en TWR pour chaque portefeuille", 1880, 900))
         portefeuillesGraphiquesHtml.append(self.GraphiqueCombineSunburstTreemapHeatmap(self.prixBrutTickers, self.pourcentagesMensuelsPortefeuille, self.cash, 1880))
 

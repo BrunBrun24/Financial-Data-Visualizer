@@ -31,11 +31,10 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
 
         self.repertoireJson = repertoireJson
 
-        self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "Ordres d'achats.json"))
-        self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "Ordres de ventes.json"))
         self.startDate = self.PremiereDateDepot()
         self.endDate = datetime.today()
-        self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()), self.startDate, self.endDate)
+        self.datesAchats = self.RecuperationTickerBuySell((repertoireJson + "Ordres d'achats.json"))
+        self.datesVentes = self.RecuperationTickerBuySell((repertoireJson + "Ordres de ventes.json"))
 
         self.prixFifoTickers = {}
         self.montantsInvestisTickers = {}
@@ -51,29 +50,31 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
         self.pourcentagesMensuelsPortefeuille = pd.DataFrame(dtype=float)
         self.soldeCompteBancaire = pd.DataFrame(dtype=float)
         self.cash = pd.DataFrame(dtype=float)
+        self.montantsInvestisPortefeuille = self.EvolutionArgentInvestis()
 
         # Ajoute sur le graphique mon portefeuille
         self.MonPortefeuille(repertoireJson)
 
-        # nameCompteBancaire = "Mon Portefeuille"
-        # # Dictionnaire pour enregistrer les DataFrame dans des fichiers JSON
-        # enregistrerDataFrameSerie = [
-        #     {"data": self.prixFifoTickers[nameCompteBancaire], "file": "prixFifoTickers"},
-        #     {"data": self.montantsInvestisTickers[nameCompteBancaire], "file": "montantsInvestisTickers"},
-        #     {"data": self.montantsVentesTickers[nameCompteBancaire], "file": "montantsVentesTickers"},
-        #     {"data": self.tickersTWR[nameCompteBancaire], "file": "tickersTWR"},
-        #     {"data": self.prixNetTickers[nameCompteBancaire], "file": "prixNetTickers"},
-        #     {"data": self.prixBrutTickers[nameCompteBancaire], "file": "prixBrutTickers"},
-        #     {"data": self.dividendesTickers[nameCompteBancaire], "file": "dividendesTickers"},
-        #     {"data": self.fondsInvestisTickers[nameCompteBancaire], "file": "fondsInvestisTickers"},
-        #     {"data": self.portefeuilleTWR[nameCompteBancaire], "file": "portefeuilleTWR"},
-        #     {"data": self.prixNetPortefeuille[nameCompteBancaire], "file": "prixNetPortefeuille"},
-        #     {"data": self.pourcentagesMensuelsPortefeuille[nameCompteBancaire], "file": "pourcentagesMensuelsPortefeuille"},
-        #     {"data": self.soldeCompteBancaire[nameCompteBancaire], "file": "soldeCompteBancaire"},
-        #     {"data": self.cash[nameCompteBancaire], "file": "cash"},
-        # ]
+        nameCompteBancaire = "Mon Portefeuille"
+        # Dictionnaire pour enregistrer les DataFrame dans des fichiers JSON
+        enregistrerDataFrameSerie = [
+            {"data": self.prixFifoTickers[nameCompteBancaire], "file": "prixFifoTickers"},
+            {"data": self.montantsInvestisTickers[nameCompteBancaire], "file": "montantsInvestisTickers"},
+            {"data": self.montantsVentesTickers[nameCompteBancaire], "file": "montantsVentesTickers"},
+            {"data": self.tickersTWR[nameCompteBancaire], "file": "tickersTWR"},
+            {"data": self.prixNetTickers[nameCompteBancaire], "file": "prixNetTickers"},
+            {"data": self.prixBrutTickers[nameCompteBancaire], "file": "prixBrutTickers"},
+            {"data": self.dividendesTickers[nameCompteBancaire], "file": "dividendesTickers"},
+            {"data": self.fondsInvestisTickers[nameCompteBancaire], "file": "fondsInvestisTickers"},
+            {"data": self.portefeuilleTWR[nameCompteBancaire], "file": "portefeuilleTWR"},
+            {"data": self.prixNetPortefeuille[nameCompteBancaire], "file": "prixNetPortefeuille"},
+            {"data": self.pourcentagesMensuelsPortefeuille[nameCompteBancaire], "file": "pourcentagesMensuelsPortefeuille"},
+            {"data": self.soldeCompteBancaire[nameCompteBancaire], "file": "soldeCompteBancaire"},
+            {"data": self.cash[nameCompteBancaire], "file": "cash"},
+        ]
 
-        # self.EnregistrerJson(enregistrerDataFrameSerie, (repertoireJson + "Mon Portefeuille/"))
+        self.EnregistrerJson(enregistrerDataFrameSerie, (repertoireJson + "Mon Portefeuille/"))
+        self.EnregistreSerieEnJson(self.soldeCompteBancaire[nameCompteBancaire], (repertoireJson + "Portefeuille.json"))
 
 
     def SetPortfolioPercentage(self, portfolioPercentage: list):
@@ -176,8 +177,9 @@ class PortefeuilleBourse(RecuperationDonnees, GraphiquesDashboard, MonPortefeuil
 
         # Conversion de l'index en chaînes ISO 8601 pour JSON
         dictData = dataFrame.reset_index()
-        dictData['index'] = dictData['index'].apply(lambda x: x.strftime('%Y-%m-%d'))
-        dictData = dictData.rename(columns={'index': 'Date'}).to_dict(orient='records')
+        indexColumnName = dictData.columns[0]
+        dictData[indexColumnName] = dictData[indexColumnName].apply(lambda x: x.strftime('%Y-%m-%d'))
+        dictData = dictData.rename(columns={indexColumnName: 'Date'}).to_dict(orient='records')
 
         # Écriture dans un fichier JSON
         os.makedirs(os.path.dirname(cheminFichierJson), exist_ok=True)  # Créer les dossiers si nécessaire

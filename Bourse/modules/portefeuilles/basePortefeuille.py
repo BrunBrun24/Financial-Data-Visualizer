@@ -210,9 +210,6 @@ class BasePortefeuille:
             # Récupération des dividendes
             dividendes = yf.Ticker(ticker).dividends
 
-            if dividendes.empty:
-                continue  # Passer ce ticker s'il n'a pas de dividendes
-
             # Suppression de la timezone si nécessaire
             dividendes.index = dividendes.index.tz_localize(None) if dividendes.index.tz else dividendes.index
 

@@ -161,8 +161,13 @@ class RecuperationDonnees:
             # Détermination du montant en fonction du fichier
             if fichierJsonAchatsVentes == (self.repertoireJson + "Ordres d'achats.json"):
                 montant = abs(entry["Montant investi"])
+                coursMoyen = entry["Cours moyen"]
             else:
+                assert "Frais" in entry, f"L'entrée doit contenir 'Frais': ({entry})"
                 montant = abs(entry["Montant gagné"])
+                coursMoyen = entry["Prix du ticker lors de la vente"]
+
+            frais = abs(entry["Frais"])
 
             # Si le ticker n'est pas encore dans le dictionnaire, on l'ajoute avec une valeur vide
             if ticker not in result:
@@ -170,52 +175,98 @@ class RecuperationDonnees:
 
             # Mise à jour du dictionnaire pour ce ticker
             if dateExecution in result[ticker]:
-                result[ticker][dateExecution] += montant
+                result[ticker][dateExecution]["montant"] += montant
+                result[ticker][dateExecution]["coursMoyen"] += coursMoyen
+                result[ticker][dateExecution]["frais"] += frais
             else:
-                result[ticker][dateExecution] = montant
+                result[ticker][dateExecution] = {}
+                result[ticker][dateExecution]["montant"] = montant
+                result[ticker][dateExecution]["coursMoyen"] = coursMoyen
+                result[ticker][dateExecution]["frais"] = frais
 
         # Retourner les données triées par date pour chaque ticker
-        return {ticker: dict(sorted(dates.items())) for ticker, dates in result.items()}
+        result = {ticker: dict(sorted(dates.items())) for ticker, dates in result.items()}
+        return self.TickersSplits(result)
 
-    def RecuperationTickerFrais(self, fichierJsonAchatsVentes: str) -> dict:
+    def TickersSplits(self, data: dict) -> dict:
         """
-        Récupère les données des frais de transactions par ticker depuis un fichier JSON.
+        Ajuste le prix moyen d'achat des actions en fonction des splits survenus après self.startDate.
 
         Args:
-            fichierJsonAchatsVentes (str): Chemin vers le fichier JSON contenant les frais transactions.
+            data (dict): Dictionnaire contenant les transactions par ticker.
 
         Returns:
-            dict: Un dictionnaire où chaque clé est un ticker, et chaque valeur est un dictionnaire contenant les dates et les frais.
+            dict: Le même dictionnaire avec les prix moyens ajustés en fonction des splits.
         """
-        assert isinstance(fichierJsonAchatsVentes, str), f"fichierJsonAchatsVentes doit être une chaîne de caractères: ({fichierJsonAchatsVentes})"
-        assert os.path.exists(fichierJsonAchatsVentes) and fichierJsonAchatsVentes.endswith('.json'), f"Le fichier {fichierJsonAchatsVentes} n'existe pas ou n'a pas l'extension .json."
+        # Vérification des types d'entrée
+        assert isinstance(data, dict), "data doit être un dictionnaire"
+        assert hasattr(self, "startDate"), "self doit contenir un attribut startDate"
+        assert isinstance(self.startDate, pd.Timestamp), "self.startDate doit être un objet pd.Timestamp"
 
-        data = self.ExtraireDonneeJson(fichierJsonAchatsVentes)
+        for ticker, transactions in data.items():
+            assert isinstance(transactions, dict), f"Les transactions pour {ticker} doivent être un dictionnaire"
+
+            # Télécharger les données du ticker
+            action = yf.Ticker(ticker)
+            splits = action.splits  # Récupérer les splits
+
+            if splits is not None and not splits.empty:
+                # Enlever le fuseau horaire des dates des splits pour éviter les erreurs de comparaison
+                splits.index = splits.index.tz_localize(None)
+
+                # Filtrer les splits après self.startDate
+                splits = splits[splits.index >= self.startDate]
+
+                if not splits.empty:
+                    # Appliquer l'ajustement de split sur les transactions
+                    for dateSplit, ratio in splits.items():
+                        assert isinstance(ratio, (int, float)), f"Le ratio du split doit être un nombre, obtenu: {type(ratio)}"
+
+                        for date, transaction in transactions.items():
+                            assert isinstance(transaction, dict), f"La transaction pour {ticker} à la date {date} doit être un dictionnaire"
+                            assert "coursMoyen" in transaction, f"La transaction doit contenir 'coursMoyen' pour {ticker} à la date {date}"
+                            assert isinstance(transaction["coursMoyen"], (int, float)), f"'coursMoyen' doit être un nombre pour {ticker} à la date {date}"
+
+                            # Ajustement du prix moyen si la transaction est antérieure ou égale au split
+                            if date <= dateSplit:
+                                transaction["coursMoyen"] /= ratio
+
+        return data
+
+    def RecuperationTickerDividendes(self, fichierJsonDividendes: str) -> pd.DataFrame:
+        """
+        Récupère les dividendes par action à partir d'un fichier JSON et les organise sous forme de DataFrame.
+
+        Args:
+            fichierJsonDividendes (str): Chemin du fichier JSON contenant les dividendes.
+
+        Returns:
+            pd.DataFrame: DataFrame avec les tickers en colonnes, les dates en index et les dividendes en valeurs.
+        """
+        # Extraire les données du fichier JSON
+        data = self.ExtraireDonneeJson(fichierJsonDividendes)
         assert isinstance(data, list), f"Les données extraites doivent être une liste: ({type(data)})"
-        result = {}
+
+        # Création de la plage de dates pour l'index du DataFrame
+        plageDate = pd.date_range(start=self.startDate, end=self.endDate)
+        result = pd.DataFrame(0, index=plageDate, columns=self.prixTickers.columns, dtype=float)
 
         # Parcours de chaque élément dans la liste de données
         for entry in data:
-            assert isinstance(entry, dict), f"Chaque élément des données doit être un dictionnaire: ({type(entry)})"
-            assert "Ticker" in entry, f"Chaque entrée doit contenir la clé 'Ticker': ({entry})"
-            assert "Date d'exécution" in entry, f"Chaque entrée doit contenir la clé 'Date d'exécution': ({entry})"
-            assert "Frais" in entry, f"L'entrée doit contenir 'Montant investi' ou 'Montant gagné': ({entry})"
-
             ticker = entry["Ticker"]
-            dateExecution = pd.to_datetime(entry["Date d'exécution"])
+            dateExecution = pd.to_datetime(entry["Date de valeur"])
+            dividende = entry["Dividendes net"]
 
-            montant = abs(entry["Frais"])  # On prend la valeur absolue du montant investi
-            
-            # Si le ticker n'est pas encore dans le dictionnaire, on l'ajoute avec une valeur vide
-            if ticker not in result:
-                result[ticker] = {}
-            
-            if dateExecution in result[ticker]:
-                result[ticker][dateExecution] += montant
-            else:
-                result[ticker][dateExecution] = montant
-        
-        return {ticker: dict(sorted(dates.items())) for ticker, dates in result.items()}
+            # Ajout du dividende à la bonne position dans le DataFrame
+            if ticker not in result.columns:
+                result[ticker] = 0.0  # Initialisation de la colonne si absente
+
+            result.at[dateExecution, ticker] = dividende
+
+        # Remplissage des valeurs NaN par 0 (aucun dividende ces jours-là)
+        result.fillna(0, inplace=True)
+
+        return result
 
     def PremiereDateDepot(self) -> datetime:
         """
@@ -254,45 +305,37 @@ class RecuperationDonnees:
 
         return data
     
-
-
-    def CalculateNetInvestment(self) -> float:
+    
+    def EvolutionArgentInvestis(self) -> pd.Series:
         """
-        Calcule l'argent investi initialement.
-        
-        Il faut calculer la somme des montants investis pour chaque ticker à chaque date d'achat.
-        Puis on soustrait l'argent initialement investi du ticker s'il a été vendu.
+        Calcule l'évolution du montant total investi dans le portefeuille au fil du temps.
 
-        Attention toutefois, si on vend un ticker et qu'il possède une ancienne date de vente.
-        Alors il faut calculer l'argent initialement investi entre la dernière date de vente et la date de vente actuelle.
+        Cette fonction suit les investissements en ajoutant les montants investis aux dates d'achat 
+        et en mettant à zéro les montants aux dates de vente.
 
         Returns:
-            float: La différence entre la somme des prix d'achat et la somme des prix de vente.
+            pd.Series: Série contenant l'évolution quotidienne du montant investi, avec les dates en index.
         """
 
-        totalBuy = 0.0
-        totalSell = 0.0
+        datesInvestissementsPrix = self.datesAchats.copy()
+        datesVentesPrix = self.datesVentes.copy()
+        plageDates = pd.date_range(self.startDate, self.endDate)
+        montantsInvestis = pd.DataFrame(0.0, index=plageDates, columns=self.datesAchats.keys())
 
-        # Dictionnaire pour garder la trace de l'investissement restant pour chaque ticker
-        investments = {ticker: 0.0 for ticker in self.datesAchats.keys()}
+        # Calcul du prix moyen pondéré pour chaque date d'achat
+        for ticker, datesInvestissements in datesInvestissementsPrix.items():
+            # Vérifie si la date est dans le DataFrame des prix
+            for date, transaction in datesInvestissements.items():
+                montantsInvestis.loc[date:, ticker] += transaction["montant"]
 
-        # Calcul de l'argent investi initialement pour chaque ticker
-        for ticker, achats in self.datesAchats.items():
-            # Somme des prix d'achat
-            totalBuy += sum(achats.values())
-            investments[ticker] = sum(achats.values())
+        # Calcul du prix moyen pondéré pour chaque date d'achat
+        for ticker, datesVentes in datesVentesPrix.items():
+            # Vérifie si la date est dans le DataFrame des prix
+            for date, transaction in datesVentes.items():
+                montantsInvestis.loc[date:, ticker] = 0
 
-        # Calcul des ventes et ajustement de l'investissement pour chaque ticker
-        for ticker, dateVente in self.datesVentes.items():
-            if ticker in investments:
-                # Si l'action a été vendue, soustraire l'investissement
-                totalSell += investments[ticker]
-
-                # Après la vente, réinitialiser l'investissement pour cette action
-                investments[ticker] = 0.0
-
-        # Calcul de la différence entre l'argent investi et l'argent récupéré lors des ventes
-        return totalBuy - totalSell
+        montantsInvestis = montantsInvestis.sum(axis=1)
+        return montantsInvestis
 
     @staticmethod
     def CalculerEvolutionDividendesPortefeuille(evolutionPrixBrutTickers: pd.DataFrame, tickerPriceDf: pd.DataFrame) -> pd.DataFrame:

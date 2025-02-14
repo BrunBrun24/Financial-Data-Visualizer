@@ -23,7 +23,7 @@ def TradeRepublic():
         'Capgemini': 'CAP.PA',
         'Cap gemini': 'CAP.PA',
         'iShares Physical Metals PLC': 'PHYMF',
-        'iShs VII-Core S&P': 'CSPX.L',
+        'iShs VII-Core S&P': 'CSSPX.MI',
         'AbbVie': 'ABBV',
         'Alphabet': 'GOOGL',
         'Salesforce': 'CRM',

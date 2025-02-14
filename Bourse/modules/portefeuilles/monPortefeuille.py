@@ -1,11 +1,10 @@
 from .basePortefeuille import BasePortefeuille
 
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 from collections import defaultdict
 import os
-import time
 
 class MonPortefeuille(BasePortefeuille):
     
@@ -22,6 +21,7 @@ class MonPortefeuille(BasePortefeuille):
             startDate = self.startDate
 
         nomPortefeuille = "Mon Portefeuille"
+        self.prixTickers = self.DownloadTickersPrice(list(self.datesAchats.keys()), startDate, self.endDate)
 
         montantsInvestisTickers, montantsInvestisCumules = self.PrixMoyenPondereAchat(self.prixTickers.loc[startDate:])
 
@@ -97,8 +97,8 @@ class MonPortefeuille(BasePortefeuille):
         self.tickersTWR[nomPortefeuille] = evolutionPourcentageTickers
         self.prixNetTickers[nomPortefeuille] = evolutionGainsPertesTickers
         self.prixBrutTickers[nomPortefeuille] = evolutionArgentsInvestisTickers
-        self.dividendesTickers[nomPortefeuille] = self.CalculerEvolutionDividendesPortefeuille(evolutionArgentsInvestisTickers, self.prixTickers)
-        self.prixFifoTickers[nomPortefeuille] = self.CalculerPrixFifoTickers(montantsInvestisTickers)
+        self.dividendesTickers[nomPortefeuille] = self.RecuperationTickerDividendes((repertoireJson + "Dividendes.json"))
+        self.prixFifoTickers[nomPortefeuille] = self.CalculerPrixFifoTickersMonPortefeuille(montantsInvestisTickers)
         self.fondsInvestisTickers[nomPortefeuille] = montantsInvestisCumules
         self.montantsInvestisTickers[nomPortefeuille] = montantsInvestisTickers
         self.montantsVentesTickers[nomPortefeuille] = evolutionVentesTickers
@@ -123,8 +123,8 @@ class MonPortefeuille(BasePortefeuille):
         # Calcul du prix moyen pondéré pour chaque date d'achat
         for ticker, datesInvestissements in datesInvestissementsPrix.items():
             # Vérifie si la date est dans le DataFrame des prix
-            for date, montant in datesInvestissements.items():
-                montantsInvestis.at[date, ticker] = montant
+            for date, transaction in datesInvestissements.items():
+                montantsInvestis.at[date, ticker] = transaction["montant"]
 
         montantsInvestis.fillna(0.0, inplace=True)
         montantsInvestis.sort_index(inplace=True)
@@ -139,7 +139,6 @@ class MonPortefeuille(BasePortefeuille):
         evolutionArgentsInvestisTickers = self.RecuperationDataFrame("prixBrutTickers", prixTickers)
         evolutionVentesTickers = self.RecuperationDataFrame("montantsVentesTickers", prixTickers)
         evolutionGainsPertesTickers = self.RecuperationDataFrame("prixNetTickers", prixTickers)
-        frais = self.RecuperationTickerFrais(self.repertoireJson + "Ordres de ventes.json")
 
         if (montantsInvestis.index[0] != evolutionGainsPertesTickers.index[0]):
             # Récupère les tickers qui ont toujours de l'argent investis
@@ -181,9 +180,9 @@ class MonPortefeuille(BasePortefeuille):
                     montantsInvestisCumules += montantsInvestis.loc[dateActuelle, ticker]
 
                 if dateActuelle in datesVentesPrix:
-                    enleverArgentTicker = (datesVentesPrix[dateActuelle] + frais[ticker][dateActuelle])
+                    enleverArgentTicker = (datesVentesPrix[dateActuelle]["montant"] + datesVentesPrix[dateActuelle]["frais"])
                     evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] -= enleverArgentTicker
-                    evolutionVentesTickers.loc[dateActuelle, ticker] = (enleverArgentTicker - frais[ticker][dateActuelle])
+                    evolutionVentesTickers.loc[dateActuelle, ticker] = (enleverArgentTicker - datesVentesPrix[dateActuelle]["frais"])
 
                     if ((evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] - enleverArgentTicker) <= 0):
                         evolutionArgentsInvestisTickers.loc[dateActuelle, ticker] = 0
@@ -243,12 +242,12 @@ class MonPortefeuille(BasePortefeuille):
                 if dateVente in list(datesVentes[ticker].keys()):
                     # Trouver la somme de l'argent investi avant la vente
                     sommeInvestieAvantVente = 0
-                    for dateAchat, montant in datesAchats[ticker].items():
+                    for dateAchat, transaction in datesAchats[ticker].items():
                         if dateAchat <= dateVente:
-                            sommeInvestieAvantVente += montant
+                            sommeInvestieAvantVente += transaction["montant"]
 
                     # Calculer la plus-value nette réalisée
-                    plusValueRealiseeNet.loc[dateVente:] += datesVentes[ticker][dateVente] - sommeInvestieAvantVente
+                    plusValueRealiseeNet.loc[dateVente:] += datesVentes[ticker][dateVente]["montant"] - sommeInvestieAvantVente
 
         return plusValueRealiseeNet
     
@@ -275,11 +274,11 @@ class MonPortefeuille(BasePortefeuille):
 
         result = {}
         for stock, datePrix in self.datesAchats.items():
-            for date, prix in datePrix.items():
+            for date, transaction in datePrix.items():
                 if date in result:
-                    result[date] += prix
+                    result[date] += transaction["montant"]
                 else:
-                    result[date] = prix
+                    result[date] = transaction["montant"]
         datesInvestissementsPrix = {key: result[key] for key in sorted(result.keys())}
 
         dates = sorted(list(datesDepotEspeces) + list(datesInvestissementsPrix))
@@ -324,21 +323,75 @@ class MonPortefeuille(BasePortefeuille):
             assert isinstance(actif, str), "Les clés du dictionnaire principal doivent être des chaînes de caractères représentant les actifs."
             assert isinstance(investissements, dict), f"Les valeurs associées à l'actif '{actif}' doivent être des dictionnaires."
 
-            for date, montant in investissements.items():
+            for date, transaction in investissements.items():
                 assert isinstance(date, (pd.Timestamp, str)), f"La clé '{date}' dans les investissements de l'actif '{actif}' doit être une date (datetime ou string 'YYYY-MM-DD')."
-                assert isinstance(montant, (int, float)), f"Le montant associé à la date '{date}' doit être un nombre (int ou float)."
+                assert isinstance(transaction, dict), f"transaction doit être un dictionnaire: {transaction}"
+                assert isinstance(transaction["montant"], (int, float)), f"Le montant associé à la date '{date}' doit être un nombre (int ou float)."
 
                 # Si la date est une chaîne de caractères, la convertir en datetime
                 if isinstance(date, str):
                     date = pd.to_datetime(date)
 
                 # Ajouter le montant à la date correspondante
-                investissementParDate[date] += montant
+                investissementParDate[date] += transaction["montant"]
 
         # Conversion en dictionnaire classique et tri par les clés
         return dict(sorted(investissementParDate.items()))
     
+    def CalculerPrixFifoTickersMonPortefeuille(self, montantsInvestis: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calcule le prix d'achat moyen (FIFO) pour chaque action basée sur les montants investis et les prix des tickers.
+
+        Args:
+            montantsInvestis (pd.DataFrame): DataFrame contenant les montants investis pour chaque action en colonnes,
+                                            avec les dates en index.
+
+        Returns:
+            pd.DataFrame: DataFrame contenant les prix d'achat moyens (FIFO) pour chaque action.
+        """
+        assert isinstance(montantsInvestis, pd.DataFrame), "montantsInvestis doit être un DataFrame"
+
+        # Nettoyage des données : conserver uniquement les lignes où les montants investis ne sont pas tous nuls
+        montantsInvestis = montantsInvestis.loc[montantsInvestis.sum(axis=1) != 0]
+
+        # Initialisation du DataFrame pour stocker les prix FIFO
+        prixFifo = pd.DataFrame(index=montantsInvestis.index, columns=montantsInvestis.columns, dtype=object)
+
+        # Boucle sur chaque ticker pour calculer le prix d'achat moyen
+        for ticker in montantsInvestis.columns:
+            montants = montantsInvestis[ticker]
+            
+            quantiteTotale = 0
+            totalInvesti = 0
+            
+            for date, transaction in self.datesAchats[ticker].items():
+                montantInvesti = montants[date]
+                coursTicker = transaction["coursMoyen"]
+                
+                if montantInvesti > 0:  # Investissement effectué ce jour-là
+                    quantiteAchetee = montantInvesti / coursTicker
+                    quantiteTotale += quantiteAchetee
+                    totalInvesti += montantInvesti
+
+                # Calcul du prix moyen FIFO si une quantité totale existe
+                prixFifo.loc[date, ticker] = [totalInvesti / quantiteTotale if quantiteTotale > 0 else 0, 0]
+
+        # Compléter les données entre startDate et endDate
+        dateRange = pd.date_range(start=self.startDate, end=self.endDate, freq='D')
+        prixFifo = prixFifo.reindex(dateRange)  # Ajouter les dates manquantes
+        prixFifo = prixFifo.ffill()  # Propager les dernières valeurs disponibles
+        firstInvestmentDate = montantsInvestis.index.min() - timedelta(days=1)
+        prixFifo.loc[:firstInvestmentDate] = prixFifo.loc[:firstInvestmentDate].map(lambda x: [0, 0])
+        prixFifo = prixFifo.map(lambda x: [0, 0] if isinstance(x, float) and pd.isna(x) else x)
+
+        # Ajoute le cours moyen
+        for ticker in montantsInvestis.columns:
+            for date, transaction in self.datesAchats[ticker].items():
+                prixFifo.loc[date, ticker][1] = transaction["coursMoyen"]
+
+        return prixFifo
     
+
     def DownloadDataJson(self, nameFile: str, repertoireMonPortefeuille: str):
         filePath = os.path.join(repertoireMonPortefeuille, f"{nameFile}.json")
         data = self.ExtraireDonneeJson(filePath)  # Extraction des données JSON

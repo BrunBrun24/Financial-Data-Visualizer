@@ -470,10 +470,10 @@ class TradeRepublicFileExcelJson:
         # Déterminer le dossier de destination et le nom du fichier
         if re.search(re.escape("INFORMATIONS SUR LES COÛTS EX-ANTE DE LA VENTE DE TITRES"), text):
             debutNomFichier = f"{ticker} ({date}) Informations sur les coûts "
-            DossierDestination = os.path.join('src/data/Bourse/Fichiers pdf/Ordres de ventes/InformationsCoûts')
+            DossierDestination = os.path.join('data/Bourse/pdf/Ordres de ventes/InformationsCoûts')
         else:
             debutNomFichier = f"{ticker} ({date}) Facture Vente "
-            DossierDestination = os.path.join('src/data/Bourse/Fichiers pdf/Ordres de ventes/FacturesVentes')
+            DossierDestination = os.path.join('data/Bourse/pdf/Ordres de ventes/FacturesVentes')
 
         # Assurer l'existence du dossier de destination
         os.makedirs(DossierDestination, exist_ok=True)
@@ -756,7 +756,7 @@ class TradeRepublicFileExcelJson:
             ticker = self.ExtraireDonnee(text, r"(POSITION|QUANTITÉ)[^\n]*\n([A-Za-zàâäéèêëîïôöùûü'\s&.-]+)", 2)
             titreDetenue = float(self.ExtraireDonnee(text, r'([-+]?\d+[\.,]?\d*)\s+(titre\(s\)|unit\.)', 1).replace(",", "."))
             montantInvesti = float(self.ExtraireDonnee(text, r"COMPTE-ESPÈCES DATE DE VALEUR MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1).replace(",", "."))
-            coursMoyen = float(self.ExtraireDonnee(text, r"POSITION QUANTITÉ COURS MOYEN MONTANT\s+.*?\s([\d,]+)\sEUR", 1).replace(",", "."))
+            coursMoyen = float(self.ExtraireDonnee(text, r"POSITION QUANTITÉ (?:COURS MOYEN|PRIX) MONTANT\s+.*?\s([\d,]+)\sEUR", 1).replace(",", "."))
             
             dateValeur = self.ExtraireDonnee(text, r"(?<=COMPTE-ESPÈCES DATE DE VALEUR MONTANT\n)\S+\s+(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})", 1)
             if "/" in dateValeur:  # Pour le format DD/MM/YYYY
@@ -764,13 +764,17 @@ class TradeRepublicFileExcelJson:
             elif "-" in dateValeur:  # Pour le format YYYY-MM-DD
                 dateValeur = datetime.strptime(dateValeur, "%Y-%m-%d").date()
 
+            frais = self.ExtraireDonnee(text, r"POSITION MONTANT\s+.*\s+([-\d,]+)\s+EUR", 1)
+            frais = float(frais.replace(",", ".")) if frais else 0
+
             newData = {
                 "Date d'exécution": dateExecution,
                 "Date de valeur": dateValeur,
                 "Ticker": ticker,
                 "Montant investi": montantInvesti,
                 "Titre(s) détenue(s)": titreDetenue,
-                "Cours moyen": coursMoyen,
+                "Cours moyen": coursMoyen, 
+                "Frais": frais, 
                 "Isin": isin,
                 "COMPTE-TITRE": compteTitre,
                 "Iban": iban
@@ -788,6 +792,7 @@ class TradeRepublicFileExcelJson:
             "Montant investi": -4.00,
             "Titre(s) détenue(s)": 0.02457,
             "Cours moyen": 162.80,
+            "Frais": 0, 
             "Isin": "US0378331005",
             "COMPTE-TITRE": "0700305101",
             "Iban": "DE83502109007011655011",
@@ -805,7 +810,7 @@ class TradeRepublicFileExcelJson:
         df = tkinter.Run()
 
         nomFeuille = "Ordres d'Achats"
-        colonnesEuros = ["Montant investi", "Cours moyen"]
+        colonnesEuros = ["Montant investi", "Cours moyen", "Frais"]
         colonnesPourcentages = []
         colonnesDates = ["Date d'exécution", "Date de valeur"]
         appliquerTableau = True
