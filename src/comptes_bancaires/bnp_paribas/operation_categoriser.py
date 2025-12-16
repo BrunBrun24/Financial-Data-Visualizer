@@ -38,6 +38,26 @@ class OperationCategoriser(CompteTireBdd):
         self.__display_label.grid(row=(len(self.__category) // self.__buttons_per_row) + 1, column=0, columnspan=self.__buttons_per_row, pady=20)
     
     
+    def categoriser(self):
+        """
+		Lance l'interface graphique pour la catégorisation des opérations.
+
+		Actions :
+		- Configure la fenêtre principale
+		- Centre la fenêtre à l'écran
+		- Affiche la première opération à catégoriser
+		- Démarre la boucle principale Tkinter pour gérer les interactions utilisateur
+        """
+        # Fenêtre principale
+        self.__root.title("Catégorisation d'opérations")
+
+        self.__center_window()
+        self.__update_display()
+
+        # Démarrer la boucle principale de Tkinter
+        self.__root.mainloop()
+
+
     def __center_window(self):
         """
 		Centre la fenêtre Tkinter sur l'écran en ajustant sa position
@@ -321,23 +341,3 @@ class OperationCategoriser(CompteTireBdd):
 
         # Mise à jour de l'affichage
         self.__update_display()
-
-
-    def categoriser(self):
-        """
-		Lance l'interface graphique pour la catégorisation des opérations.
-
-		Actions :
-		- Configure la fenêtre principale
-		- Centre la fenêtre à l'écran
-		- Affiche la première opération à catégoriser
-		- Démarre la boucle principale Tkinter pour gérer les interactions utilisateur
-        """
-        # Fenêtre principale
-        self.__root.title("Catégorisation d'opérations")
-
-        self.__center_window()
-        self.__update_display()
-
-        # Démarrer la boucle principale de Tkinter
-        self.__root.mainloop()

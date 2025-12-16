@@ -159,179 +159,65 @@ class CompteTireBdd(Bdd):
         self.__ajouter_categories()
 
 
-    def __creer_base_avec_tables(self):
+    def ajouter_donnees_brutes(self, df: pd.DataFrame):
         """
-        Crée l'ensemble des tables nécessaires au fonctionnement de la base de données
-        si elles n'existent pas déjà.
+		Ajoute des lignes dans la table `donnees_brutes` à partir d'un DataFrame,
+		en évitant les doublons existants dans la base.
+
+		Args:
+		- df : pd.DataFrame contenant les opérations à ajouter (colonnes : date_operation, libelle_court, type_operation, libelle_operation, montant)
         """
-        connexion = sqlite3.connect(self._db_path)
-        curseur = connexion.cursor()
+        conn = sqlite3.connect(self._db_path)
+        cursor = conn.cursor()
 
-        # Table des catégories
-        curseur.execute("""
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nom TEXT UNIQUE
-            );
-        """)
+        # Conversion des Timestamp → SQLite attend des strings
+        df = df.copy()
+        for col in df.columns:
+            if df[col].dtype == "datetime64[ns]":
+                df[col] = df[col].dt.strftime("%Y-%m-%d")
 
-        # Table des sous-catégories
-        curseur.execute("""
-            CREATE TABLE IF NOT EXISTS sous_categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                categorie_id INTEGER,
-                nom TEXT UNIQUE,
-                FOREIGN KEY (categorie_id) REFERENCES categories(id)
-            );
-        """)
+        # Nettoyage : enlever les doublons dans le DataFrame lui-même
+        df = df.drop_duplicates()
 
-        # Table des données brutes
-        curseur.execute("""
-            CREATE TABLE IF NOT EXISTS donnees_brutes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date_operation TEXT,
-                libelle_court TEXT,
-                type_operation TEXT,
-                libelle_operation TEXT,
-                montant REAL,
-                traite INTEGER DEFAULT 0
-            );
-        """)
+        # Liste des lignes à insérer
+        lignes_a_inserer = []
 
-        # Table des opérations
-        curseur.execute("""
-            CREATE TABLE IF NOT EXISTS operations_categorisees (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                categorie_id INTEGER,
-                sous_categorie_id INTEGER,
-                donnees_brutes_id INTEGER,
-                date_operation TEXT,
-                libelle_court TEXT,
-                type_operation TEXT,
-                libelle_operation TEXT,
-                montant REAL,
-                FOREIGN KEY (categorie_id) REFERENCES categories(id),
-                FOREIGN KEY (sous_categorie_id) REFERENCES sous_categories(id),
-                FOREIGN KEY (donnees_brutes_id) REFERENCES donnees_brutes(id)
-            );
-        """)
-
-        connexion.commit()
-        connexion.close()
-
-    def __ajouter_categories(self):
+        # Préparer une requête pour la vérification
+        check_sql = """
+            SELECT traite FROM donnees_brutes 
+            WHERE date_operation = ?
+            AND libelle_court = ?
+            AND type_operation = ?
+            AND libelle_operation = ?
+            AND montant = ?
         """
-		Ajoute les catégories et sous-catégories définies en configuration
-		dans la base de données si elles n'existent pas déjà.
-		"""
-        connexion = sqlite3.connect(self._db_path)
-        curseur = connexion.cursor()
 
-        for categorie, sous_list in self._BUTTON_LABELS.items():
-            # Ajout catégorie
-            curseur.execute(
-                "INSERT OR IGNORE INTO categories (nom) VALUES (?)",
-                (categorie,)
-            )
+        # Vérification pour chaque ligne
+        for row in df.itertuples(index=False):
+            params = (row[0], row[1], row[2], row[3], row[4])
 
-            # Récupérer son id
-            curseur.execute(
-                "SELECT id FROM categories WHERE nom = ?",
-                (categorie,)
-            )
-            categorie_id = curseur.fetchone()[0]
+            cursor.execute(check_sql, params)
+            result = cursor.fetchone()
 
-            # Ajout sous-catégories
-            for sous in sous_list:
-                curseur.execute(
-                    "INSERT OR IGNORE INTO sous_categories (nom, categorie_id) VALUES (?, ?)",
-                    (sous, categorie_id)
-                )
+            # Si la ligne existe déjà → on ignore
+            if result is not None:
+                continue
 
-        connexion.commit()
-        connexion.close()
+            # Sinon → on ajouté dans la liste à insérer
+            lignes_a_inserer.append(params)
 
-    def __verifier_categories_coherentes(self):
-        """
-        Vérifie que toutes les catégories et sous-catégories présentes dans la BDD
-        existent dans self._BUTTON_LABELS .
-
-        Si une catégorie ou sous-catégorie n'existe plus :
-            - supprimer les lignes dans operations_categorisees
-            - remettre traite = 0 dans donnees_brutes
-            - supprimer la catégorie ou sous-catégorie dans la BDD
-        """
-        connexion = sqlite3.connect(self._db_path)
-        cursor = connexion.cursor()
-
-        # Construire les sets autorisés à partir de _BUTTON_LABELS 
-        categories_autorisees = set(self._BUTTON_LABELS .keys())
-
-        sous_autorisees = set()
-        for _, sous_list in self._BUTTON_LABELS .items():
-            sous_autorisees.update(sous_list)
-
-        # Récupérer les catégories en base
-        cursor.execute("SELECT id, nom FROM categories")
-        categories_en_base = cursor.fetchall()
-
-        # Récupérer les sous-catégories en base
-        cursor.execute("SELECT id, nom FROM sous_categories")
-        sous_en_base = cursor.fetchall()
-
-        # Fonction utilitaire : suppression + remise traite=0
-        def nettoyer_operations_par_champ(champ, valeur_id):
-            """
-            champ : 'categorie_id' ou 'sous_categorie_id'
-            valeur_id : id à nettoyer
+        # ✅ Insertion en masse (plus rapide et plus propre)
+        if lignes_a_inserer:
+            insert_sql = """
+                INSERT INTO donnees_brutes
+                (date_operation, libelle_court, type_operation, libelle_operation, montant)
+                VALUES (?, ?, ?, ?, ?)
             """
 
-            # Récupérer toutes les lignes operations_categorisees
-            cursor.execute(
-                f"SELECT donnees_brutes_id FROM operations_categorisees WHERE {champ} = ?",
-                (valeur_id,)
-            )
-            donnees_ids = cursor.fetchall()
+            cursor.executemany(insert_sql, lignes_a_inserer)
 
-            # Remettre traite = 0 dans donnees_brutes
-            for (db_id,) in donnees_ids:
-                cursor.execute(
-                    "UPDATE donnees_brutes SET traite = 0 WHERE id = ?",
-                    (db_id,)
-                )
-
-            # Supprimer les opérations catégorisées correspondantes
-            cursor.execute(
-                f"DELETE FROM operations_categorisees WHERE {champ} = ?",
-                (valeur_id,)
-            )
-
-        # Vérification catégories
-        for cat_id, cat_nom in categories_en_base:
-            if cat_nom not in categories_autorisees:
-
-                print(f"[⚠] Catégorie supprimée : {cat_nom}")
-
-                # Nettoyage des opérations + remise traite=0
-                nettoyer_operations_par_champ("categorie_id", cat_id)
-
-                # Suppression catégorie
-                cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
-
-        # Vérification sous-catégories
-        for sous_id, sous_nom in sous_en_base:
-            if sous_nom not in sous_autorisees:
-
-                print(f"[⚠] Sous-catégorie supprimée : {sous_nom}")
-
-                # Nettoyage des opérations + remise traite=0
-                nettoyer_operations_par_champ("sous_categorie_id", sous_id)
-
-                # Suppression sous-catégorie
-                cursor.execute("DELETE FROM sous_categories WHERE id = ?", (sous_id,))
-
-        connexion.commit()
-        connexion.close()
+        conn.commit()
+        conn.close()
 
 
     def _get_category_ids(self) -> tuple:
@@ -519,62 +405,176 @@ class CompteTireBdd(Bdd):
         return years_dict
 
 
-    def ajouter_donnees_brutes(self, df: pd.DataFrame):
+    def __creer_base_avec_tables(self):
         """
-		Ajoute des lignes dans la table `donnees_brutes` à partir d'un DataFrame,
-		en évitant les doublons existants dans la base.
-
-		Args:
-		- df : pd.DataFrame contenant les opérations à ajouter (colonnes : date_operation, libelle_court, type_operation, libelle_operation, montant)
+        Crée l'ensemble des tables nécessaires au fonctionnement de la base de données
+        si elles n'existent pas déjà.
         """
-        conn = sqlite3.connect(self._db_path)
-        cursor = conn.cursor()
+        connexion = sqlite3.connect(self._db_path)
+        curseur = connexion.cursor()
 
-        # Conversion des Timestamp → SQLite attend des strings
-        df = df.copy()
-        for col in df.columns:
-            if df[col].dtype == "datetime64[ns]":
-                df[col] = df[col].dt.strftime("%Y-%m-%d")
+        # Table des catégories
+        curseur.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT UNIQUE
+            );
+        """)
 
-        # Nettoyage : enlever les doublons dans le DataFrame lui-même
-        df = df.drop_duplicates()
+        # Table des sous-catégories
+        curseur.execute("""
+            CREATE TABLE IF NOT EXISTS sous_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                categorie_id INTEGER,
+                nom TEXT UNIQUE,
+                FOREIGN KEY (categorie_id) REFERENCES categories(id)
+            );
+        """)
 
-        # Liste des lignes à insérer
-        lignes_a_inserer = []
+        # Table des données brutes
+        curseur.execute("""
+            CREATE TABLE IF NOT EXISTS donnees_brutes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date_operation TEXT,
+                libelle_court TEXT,
+                type_operation TEXT,
+                libelle_operation TEXT,
+                montant REAL,
+                traite INTEGER DEFAULT 0
+            );
+        """)
 
-        # Préparer une requête pour la vérification
-        check_sql = """
-            SELECT traite FROM donnees_brutes 
-            WHERE date_operation = ?
-            AND libelle_court = ?
-            AND type_operation = ?
-            AND libelle_operation = ?
-            AND montant = ?
+        # Table des opérations
+        curseur.execute("""
+            CREATE TABLE IF NOT EXISTS operations_categorisees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                categorie_id INTEGER,
+                sous_categorie_id INTEGER,
+                donnees_brutes_id INTEGER,
+                date_operation TEXT,
+                libelle_court TEXT,
+                type_operation TEXT,
+                libelle_operation TEXT,
+                montant REAL,
+                FOREIGN KEY (categorie_id) REFERENCES categories(id),
+                FOREIGN KEY (sous_categorie_id) REFERENCES sous_categories(id),
+                FOREIGN KEY (donnees_brutes_id) REFERENCES donnees_brutes(id)
+            );
+        """)
+
+        connexion.commit()
+        connexion.close()
+
+    def __ajouter_categories(self):
         """
+		Ajoute les catégories et sous-catégories définies en configuration
+		dans la base de données si elles n'existent pas déjà.
+		"""
+        connexion = sqlite3.connect(self._db_path)
+        curseur = connexion.cursor()
 
-        # Vérification pour chaque ligne
-        for row in df.itertuples(index=False):
-            params = (row[0], row[1], row[2], row[3], row[4])
+        for categorie, sous_list in self._BUTTON_LABELS.items():
+            # Ajout catégorie
+            curseur.execute(
+                "INSERT OR IGNORE INTO categories (nom) VALUES (?)",
+                (categorie,)
+            )
 
-            cursor.execute(check_sql, params)
-            result = cursor.fetchone()
+            # Récupérer son id
+            curseur.execute(
+                "SELECT id FROM categories WHERE nom = ?",
+                (categorie,)
+            )
+            categorie_id = curseur.fetchone()[0]
 
-            # Si la ligne existe déjà → on ignore
-            if result is not None:
-                continue
+            # Ajout sous-catégories
+            for sous in sous_list:
+                curseur.execute(
+                    "INSERT OR IGNORE INTO sous_categories (nom, categorie_id) VALUES (?, ?)",
+                    (sous, categorie_id)
+                )
 
-            # Sinon → on ajouté dans la liste à insérer
-            lignes_a_inserer.append(params)
+        connexion.commit()
+        connexion.close()
 
-        # ✅ Insertion en masse (plus rapide et plus propre)
-        if lignes_a_inserer:
-            insert_sql = """
-                INSERT INTO donnees_brutes
-                (date_operation, libelle_court, type_operation, libelle_operation, montant)
-                VALUES (?, ?, ?, ?, ?)
+    def __verifier_categories_coherentes(self):
+        """
+        Vérifie que toutes les catégories et sous-catégories présentes dans la BDD
+        existent dans self._BUTTON_LABELS .
+
+        Si une catégorie ou sous-catégorie n'existe plus :
+            - supprimer les lignes dans operations_categorisees
+            - remettre traite = 0 dans donnees_brutes
+            - supprimer la catégorie ou sous-catégorie dans la BDD
+        """
+        connexion = sqlite3.connect(self._db_path)
+        cursor = connexion.cursor()
+
+        # Construire les sets autorisés à partir de _BUTTON_LABELS 
+        categories_autorisees = set(self._BUTTON_LABELS .keys())
+
+        sous_autorisees = set()
+        for _, sous_list in self._BUTTON_LABELS .items():
+            sous_autorisees.update(sous_list)
+
+        # Récupérer les catégories en base
+        cursor.execute("SELECT id, nom FROM categories")
+        categories_en_base = cursor.fetchall()
+
+        # Récupérer les sous-catégories en base
+        cursor.execute("SELECT id, nom FROM sous_categories")
+        sous_en_base = cursor.fetchall()
+
+        # Fonction utilitaire : suppression + remise traite=0
+        def nettoyer_operations_par_champ(champ, valeur_id):
+            """
+            champ : 'categorie_id' ou 'sous_categorie_id'
+            valeur_id : id à nettoyer
             """
 
-            cursor.executemany(insert_sql, lignes_a_inserer)
+            # Récupérer toutes les lignes operations_categorisees
+            cursor.execute(
+                f"SELECT donnees_brutes_id FROM operations_categorisees WHERE {champ} = ?",
+                (valeur_id,)
+            )
+            donnees_ids = cursor.fetchall()
 
-        conn.commit()
-        conn.close()
+            # Remettre traite = 0 dans donnees_brutes
+            for (db_id,) in donnees_ids:
+                cursor.execute(
+                    "UPDATE donnees_brutes SET traite = 0 WHERE id = ?",
+                    (db_id,)
+                )
+
+            # Supprimer les opérations catégorisées correspondantes
+            cursor.execute(
+                f"DELETE FROM operations_categorisees WHERE {champ} = ?",
+                (valeur_id,)
+            )
+
+        # Vérification catégories
+        for cat_id, cat_nom in categories_en_base:
+            if cat_nom not in categories_autorisees:
+
+                print(f"[⚠] Catégorie supprimée : {cat_nom}")
+
+                # Nettoyage des opérations + remise traite=0
+                nettoyer_operations_par_champ("categorie_id", cat_id)
+
+                # Suppression catégorie
+                cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+
+        # Vérification sous-catégories
+        for sous_id, sous_nom in sous_en_base:
+            if sous_nom not in sous_autorisees:
+
+                print(f"[⚠] Sous-catégorie supprimée : {sous_nom}")
+
+                # Nettoyage des opérations + remise traite=0
+                nettoyer_operations_par_champ("sous_categorie_id", sous_id)
+
+                # Suppression sous-catégorie
+                cursor.execute("DELETE FROM sous_categories WHERE id = ?", (sous_id,))
+
+        connexion.commit()
+        connexion.close()

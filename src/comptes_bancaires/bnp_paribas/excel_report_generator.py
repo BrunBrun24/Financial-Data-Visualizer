@@ -29,63 +29,41 @@ class ExcelReportGenerator(CompteTireBdd):
         super().__init__(db_path)
         self.__root_path = root_path
         self.__operations_categorisees = self._get_operations_categorisees()
+
         self.__create_year_folders()
 
+
+    def main(self, last_year: bool):
+        """
+        Génère les bilans financiers annuels pour toutes les années présentes dans les opérations catégorisées,
+        crée un fichier Excel pour chaque année et y ajoute les feuilles de bilan.
+
+        Arguments :
+        - last_year (bool) : si True, ne génère les bilans que pour les deux dernières années disponibles.
+        """
+        years_operations_categorisees = self._get_years_operations_categorisees()
+
+        # Créez les graphiques uniquement pour les 2 dernières années
+        if last_year:
+            two_last_years = list(years_operations_categorisees.keys())[-2:]
+            years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
+
+        # Regroupe toutes les opérations pour faire le bilan des différentes années
+        all_operation_categorisees = pd.DataFrame()
+
+        for year, operation_categorisees in years_operations_categorisees.items():
+            self.__output_file = f"{self.__root_path}{year}/Bilan {year}.xlsx"
+            self.__wb = self.__create_excel_file(operation_categorisees)
+            self.__add_to_excel_file(operation_categorisees)
+            all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
+            
+        # Bilan de toutes les années
+        annees = list(years_operations_categorisees.keys())
+        self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.xlsx"
+        self.__wb = self.__create_excel_file(all_operation_categorisees)
+        self.__add_to_excel_file(all_operation_categorisees)
+
     
-    @staticmethod
-    def __get_df_revenus(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filtre les opérations de la catégorie 'Revenus' et convertit la date en datetime.
-
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
-
-        Returns :
-        - pd.DataFrame : DataFrame filtré des revenus.
-        """
-        df = operation_categorisees[operation_categorisees['categorie'] == 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        return df
-
-    @staticmethod
-    def __get_df_depenses(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filtre les opérations hors 'Revenus', convertit la date et prend la valeur absolue des montants.
-
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
-
-        Returns :
-        - pd.DataFrame : DataFrame filtré des dépenses avec montants positifs.
-        """
-        df = operation_categorisees[operation_categorisees['categorie'] != 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        df['montant'] = df['montant'].abs()
-        return df
-
-    def __create_year_folders(self):
-        """
-        Crée les dossiers pour chaque année à partir des opérations catégorisées.
-
-        - Crée d’abord le dossier principal `self._root_path`.
-        - Extrait l'année de chaque opération dans `self._operations_categorisees`.
-        - Crée un sous-dossier pour chaque année unique à l’intérieur du dossier principal.
-        """
-        # Création du dossier principal
-        os.makedirs(self.__root_path, exist_ok=True)
-
-        # On suppose que self.__operations_categorisees est un DataFrame pandas
-        df = self.__operations_categorisees.copy()
-        df["annee"] = df["date_operation"].dt.year
-
-        # Liste des années uniques
-        annees = sorted(df["annee"].unique())
-
-        # Création des sous-dossiers par année
-        for annee in annees:
-            year_path = os.path.join(self.__root_path, str(annee))
-            os.makedirs(year_path, exist_ok=True)
-
     def __create_excel_file(self, df: pd.DataFrame) -> load_workbook:
         """
         Crée un fichier Excel à partir d'un DataFrame unique.
@@ -408,33 +386,56 @@ class ExcelReportGenerator(CompteTireBdd):
                 for cell in row:
                     cell.number_format = percentage_format
 
-
-    def main(self, last_year: bool):
+    def __create_year_folders(self):
         """
-        Génère les bilans financiers annuels pour toutes les années présentes dans les opérations catégorisées,
-        crée un fichier Excel pour chaque année et y ajoute les feuilles de bilan.
+        Crée les dossiers pour chaque année à partir des opérations catégorisées.
+
+        - Crée d’abord le dossier principal `self._root_path`.
+        - Extrait l'année de chaque opération dans `self._operations_categorisees`.
+        - Crée un sous-dossier pour chaque année unique à l’intérieur du dossier principal.
+        """
+        # Création du dossier principal
+        os.makedirs(self.__root_path, exist_ok=True)
+
+        # On suppose que self.__operations_categorisees est un DataFrame pandas
+        df = self.__operations_categorisees.copy()
+        df["annee"] = df["date_operation"].dt.year
+
+        # Liste des années uniques
+        annees = sorted(df["annee"].unique())
+
+        # Création des sous-dossiers par année
+        for annee in annees:
+            year_path = os.path.join(self.__root_path, str(annee))
+            os.makedirs(year_path, exist_ok=True)
+
+    @staticmethod
+    def __get_df_revenus(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filtre les opérations de la catégorie 'Revenus' et convertit la date en datetime.
 
         Arguments :
-        - last_year (bool) : si True, ne génère les bilans que pour les deux dernières années disponibles.
+        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
+
+        Returns :
+        - pd.DataFrame : DataFrame filtré des revenus.
         """
-        years_operations_categorisees = self._get_years_operations_categorisees()
+        df = operation_categorisees[operation_categorisees['categorie'] == 'Revenus'].copy()
+        df["date_operation"] = pd.to_datetime(df["date_operation"])
+        return df
 
-        # Créez les graphiques uniquement pour les 2 dernières années
-        if last_year:
-            two_last_years = list(years_operations_categorisees.keys())[-2:]
-            years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
+    @staticmethod
+    def __get_df_depenses(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filtre les opérations hors 'Revenus', convertit la date et prend la valeur absolue des montants.
 
-        # Regroupe toutes les opérations pour faire le bilan des différentes années
-        all_operation_categorisees = pd.DataFrame()
+        Arguments :
+        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
 
-        for year, operation_categorisees in years_operations_categorisees.items():
-            self.__output_file = f"{self.__root_path}{year}/Bilan {year}.xlsx"
-            self.__wb = self.__create_excel_file(operation_categorisees)
-            self.__add_to_excel_file(operation_categorisees)
-            all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
-            
-        # Bilan de toutes les années
-        annees = list(years_operations_categorisees.keys())
-        self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.xlsx"
-        self.__wb = self.__create_excel_file(all_operation_categorisees)
-        self.__add_to_excel_file(all_operation_categorisees)
+        Returns :
+        - pd.DataFrame : DataFrame filtré des dépenses avec montants positifs.
+        """
+        df = operation_categorisees[operation_categorisees['categorie'] != 'Revenus'].copy()
+        df["date_operation"] = pd.to_datetime(df["date_operation"])
+        df['montant'] = df['montant'].abs()
+        return df
