@@ -123,9 +123,9 @@ class ExcelReportGenerator(CompteTireBdd):
         self.__sheet_bilan(operation_categorisees)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        for sheet_name in self._wb.sheetnames:
+        for sheet_name in self.__wb.sheetnames:
             if sheet_name not in ["Bilan Revenus", "Bilan Dépenses"]:
-                ws = self._wb[sheet_name]
+                ws = self.__wb[sheet_name]
                 min_col, min_row, max_col, max_row = 1, 1, ws.max_column, ws.max_row
                 table_style = TableStyleInfo(
                     name='TableStyleMedium2', showFirstColumn=False,
@@ -154,7 +154,7 @@ class ExcelReportGenerator(CompteTireBdd):
                     adjusted_width = max_length + 10
                     ws.column_dimensions[column].width = adjusted_width
 
-        self._wb.save(self.__output_file)
+        self.__wb.save(self.__output_file)
 
     def __sheet_bilan(self, operation_categorisees: pd.DataFrame):
         """
@@ -176,7 +176,7 @@ class ExcelReportGenerator(CompteTireBdd):
         self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", 1)
 
         df_depenses_save = self.__bilan_subcategories(df_depenses, "Dépenses")
-        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", self._wb["Bilan Dépenses"].max_row + 2)
+        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", self.__wb["Bilan Dépenses"].max_row + 2)
 
     def __bilan_categories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
         """
@@ -300,11 +300,11 @@ class ExcelReportGenerator(CompteTireBdd):
         # Remplacer les zéros par une chaîne vide
         df.replace(0, '', inplace=True)
 
-        if sheet_name in self._wb.sheetnames:
-            ws = self._wb[sheet_name]
+        if sheet_name in self.__wb.sheetnames:
+            ws = self.__wb[sheet_name]
             start_row -= 1
         else:
-            ws = self._wb.create_sheet(title=sheet_name)
+            ws = self.__wb.create_sheet(title=sheet_name)
 
         for r in dataframe_to_rows(df, index=True, header=True):
             ws.append(r)
@@ -417,14 +417,24 @@ class ExcelReportGenerator(CompteTireBdd):
         Arguments :
         - last_year (bool) : si True, ne génère les bilans que pour les deux dernières années disponibles.
         """
-        year_operations_categorisees = self._get_year_operations_categorisees()
+        years_operations_categorisees = self._get_years_operations_categorisees()
 
         # Créez les graphiques uniquement pour les 2 dernières années
         if last_year:
-            two_last_years = list(year_operations_categorisees.keys())[-2:]
-            year_operations_categorisees = {year: year_operations_categorisees[year] for year in two_last_years}
+            two_last_years = list(years_operations_categorisees.keys())[-2:]
+            years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
 
-        for year, operation_categorisees in year_operations_categorisees.items():
+        # Regroupe toutes les opérations pour faire le bilan des différentes années
+        all_operation_categorisees = pd.DataFrame()
+
+        for year, operation_categorisees in years_operations_categorisees.items():
             self.__output_file = f"{self.__root_path}{year}/Bilan {year}.xlsx"
-            self._wb = self.__create_excel_file(operation_categorisees)
+            self.__wb = self.__create_excel_file(operation_categorisees)
             self.__add_to_excel_file(operation_categorisees)
+            all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
+            
+        # Bilan de toutes les années
+        annees = list(years_operations_categorisees.keys())
+        self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.xlsx"
+        self.__wb = self.__create_excel_file(all_operation_categorisees)
+        self.__add_to_excel_file(all_operation_categorisees)

@@ -501,7 +501,7 @@ class CompteTireBdd(Bdd):
         connexion.commit()
         connexion.close()
 
-    def _get_year_operations_categorisees(self) -> dict:
+    def _get_years_operations_categorisees(self) -> dict:
         """
 		Groupes les opérations catégorisées par année.
 
