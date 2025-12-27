@@ -4,10 +4,9 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils.dataframe import dataframe_to_rows
-import os
 
+from comptes_bancaires.bnp_paribas.report_data_handler import ReportDataHandler
 from database.compte_titre import CompteTireBdd
-
 
 class ExcelReportGenerator(CompteTireBdd):
     """
@@ -19,32 +18,35 @@ class ExcelReportGenerator(CompteTireBdd):
     - Générer des bilans par catégorie et sous-catégorie pour chaque année.
     - Calculer les totaux et pourcentages pour chaque mois et catégorie.
     - Formater automatiquement les fichiers Excel avec styles, bordures et formats monétaires.
-
-    Arguments du constructeur :
-    - db_path (str) : chemin vers la base de données contenant les opérations financières.
-    - root_path (str) : chemin vers la où seront enregistré les fichiers.
     """
 
     def __init__(self, db_path: str, root_path: str):
+        """
+        Initialise le générateur et prépare l'arborescence des dossiers.
+
+        Args:
+            - db_path (str) : Chemin vers la base de données SQLite.
+            - root_path (str) : Dossier racine pour le stockage des rapports.
+        """
         super().__init__(db_path)
         self.__root_path = root_path
-        self.__operations_categorisees = self._get_operations_categorisees()
+        
+        ReportDataHandler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
 
-        self.__create_year_folders()
 
-
-    def main(self, last_year: bool):
+    # --- [ Flux Principal ] ---
+    def generate_all_reports(self, two_last_year_only: bool):
         """
         Génère les bilans financiers annuels pour toutes les années présentes dans les opérations catégorisées,
         crée un fichier Excel pour chaque année et y ajoute les feuilles de bilan.
 
         Arguments :
-        - last_year (bool) : si True, ne génère les bilans que pour les deux dernières années disponibles.
+        - two_last_year_only (bool) : si True, génère les bilans pour les deux dernières années.
         """
-        years_operations_categorisees = self._get_years_operations_categorisees()
+        years_operations_categorisees = self._get_categorized_operations_by_year()
 
         # Créez les graphiques uniquement pour les 2 dernières années
-        if last_year:
+        if two_last_year_only:
             two_last_years = list(years_operations_categorisees.keys())[-2:]
             years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
 
@@ -63,7 +65,8 @@ class ExcelReportGenerator(CompteTireBdd):
         self.__wb = self.__create_excel_file(all_operation_categorisees)
         self.__add_to_excel_file(all_operation_categorisees)
 
-    
+
+    # --- [ Formatage Excel ] ---
     def __create_excel_file(self, df: pd.DataFrame) -> load_workbook:
         """
         Crée un fichier Excel à partir d'un DataFrame unique.
@@ -89,7 +92,7 @@ class ExcelReportGenerator(CompteTireBdd):
         """
         Met à jour un fichier Excel avec les données des opérations catégorisées.
 
-        Arguments :
+        Args :
             operation_categorisees (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
 
         Actions :
@@ -133,132 +136,6 @@ class ExcelReportGenerator(CompteTireBdd):
                     ws.column_dimensions[column].width = adjusted_width
 
         self.__wb.save(self.__output_file)
-
-    def __sheet_bilan(self, operation_categorisees: pd.DataFrame):
-        """
-        Prépare et ajoute les bilans des revenus et dépenses dans les feuilles Excel correspondantes.
-
-        Arguments :
-            operation_categorisees (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-
-        Actions :
-            - Crée un bilan par sous-catégories pour les revenus et l'ajoute à la feuille "Bilan Revenus".
-            - Crée un bilan par catégories et sous-catégories pour les dépenses et l'ajoute à la feuille "Bilan Dépenses".
-        """
-        df_revenus = self.__get_df_revenus(operation_categorisees)
-        df_revenus_save = self.__bilan_subcategories(df_revenus, "Revenus")
-        self.__add_dataframe_to_sheet(df_revenus_save, "Bilan Revenus", 1)
-
-        df_depenses = self.__get_df_depenses(operation_categorisees)
-        df_depenses_save = self.__bilan_categories(df_depenses, "Dépenses")
-        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", 1)
-
-        df_depenses_save = self.__bilan_subcategories(df_depenses, "Dépenses")
-        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", self.__wb["Bilan Dépenses"].max_row + 2)
-
-    def __bilan_categories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
-        """
-        Agrège les montants par catégorie et par mois, calcule les totaux et pourcentages, 
-        et prépare un DataFrame prêt à être exporté vers Excel.
-
-        Arguments :
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
-
-        Returns :
-            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par catégorie.
-        """
-        df_revenus["mois"] = df_revenus["date_operation"].dt.strftime("%b")
-        df_resultat = (
-            df_revenus.groupby(["mois", "categorie"])["montant"]
-            .sum()
-            .reset_index()
-            .sort_values(["mois", "categorie"])
-        )
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        df_pivot = df_resultat.pivot_table(
-            index="categorie",
-            columns="mois",
-            values="montant",
-            aggfunc="sum",
-            fill_value=0
-        )
-        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
-
-        # Calculer Total et Pourcentage pour chaque sous-catégorie
-        df_pivot["Total"] = df_pivot[months].sum(axis=1)
-        total_general = df_pivot["Total"].sum()
-        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
-
-        # Créer la ligne sheet_name avec les totaux par mois uniquement
-        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
-        revenus_total[''] = ' '                           # colonne vide
-        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
-        revenus_total['Pourcentage'] = 1.0               # 100%
-        revenus_total.name = sheet_name
-
-        # Ajouter la ligne sheet_name au-dessus
-        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
-
-        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
-        df_sorted = pd.concat(
-            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
-        )
-
-        return df_sorted
-
-    def __bilan_subcategories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
-        """
-        Agrège les montants par sous-catégorie et par mois, calcule les totaux et pourcentages, 
-        et prépare un DataFrame prêt à être exporté vers Excel.
-
-        Arguments :
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
-
-        Returns :
-            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par sous-catégorie.
-        """
-        df_revenus["mois"] = df_revenus["date_operation"].dt.strftime("%b")
-        df_resultat = (
-            df_revenus.groupby(["mois", "sous_categorie"])["montant"]
-            .sum()
-            .reset_index()
-            .sort_values(["mois", "sous_categorie"])
-        )
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        df_pivot = df_resultat.pivot_table(
-            index="sous_categorie",
-            columns="mois",
-            values="montant",
-            aggfunc="sum",
-            fill_value=0
-        )
-        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
-
-        # Calculer Total et Pourcentage pour chaque sous-catégorie
-        df_pivot["Total"] = df_pivot[months].sum(axis=1)
-        total_general = df_pivot["Total"].sum()
-        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
-
-        # Créer la ligne sheet_name avec les totaux par mois uniquement
-        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
-        revenus_total[''] = ' '                           # colonne vide
-        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
-        revenus_total['Pourcentage'] = 1.0               # 100%
-        revenus_total.name = sheet_name
-
-        # Ajouter la ligne sheet_name au-dessus
-        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
-
-        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
-        df_sorted = pd.concat(
-            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
-        )
-
-        return df_sorted
 
     def __add_dataframe_to_sheet(self, df: pd.DataFrame, sheet_name: str, start_row: int, spacing: int = 5):
         """
@@ -386,56 +263,130 @@ class ExcelReportGenerator(CompteTireBdd):
                 for cell in row:
                     cell.number_format = percentage_format
 
-    def __create_year_folders(self):
+    def __sheet_bilan(self, operation_categorisees: pd.DataFrame):
         """
-        Crée les dossiers pour chaque année à partir des opérations catégorisées.
+        Prépare et ajoute les bilans des revenus et dépenses dans les feuilles Excel correspondantes.
 
-        - Crée d’abord le dossier principal `self._root_path`.
-        - Extrait l'année de chaque opération dans `self._operations_categorisees`.
-        - Crée un sous-dossier pour chaque année unique à l’intérieur du dossier principal.
+        Args :
+            operation_categorisees (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
+
+        Actions :
+            - Crée un bilan par sous-catégories pour les revenus et l'ajoute à la feuille "Bilan Revenus".
+            - Crée un bilan par catégories et sous-catégories pour les dépenses et l'ajoute à la feuille "Bilan Dépenses".
         """
-        # Création du dossier principal
-        os.makedirs(self.__root_path, exist_ok=True)
+        df_revenus = ReportDataHandler._get_income_df(operation_categorisees)
+        df_revenus_save = self.__bilan_subcategories(df_revenus, "Revenus")
+        self.__add_dataframe_to_sheet(df_revenus_save, "Bilan Revenus", 1)
 
-        # On suppose que self.__operations_categorisees est un DataFrame pandas
-        df = self.__operations_categorisees.copy()
-        df["annee"] = df["date_operation"].dt.year
+        df_depenses = ReportDataHandler._get_expense_df(operation_categorisees)
+        df_depenses_save = self.__bilan_categories(df_depenses, "Dépenses")
+        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", 1)
 
-        # Liste des années uniques
-        annees = sorted(df["annee"].unique())
+        df_depenses_save = self.__bilan_subcategories(df_depenses, "Dépenses")
+        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", self.__wb["Bilan Dépenses"].max_row + 2)
 
-        # Création des sous-dossiers par année
-        for annee in annees:
-            year_path = os.path.join(self.__root_path, str(annee))
-            os.makedirs(year_path, exist_ok=True)
 
-    @staticmethod
-    def __get_df_revenus(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
+    # --- [ Traitement des Données ] ---
+    def __bilan_categories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
         """
-        Filtre les opérations de la catégorie 'Revenus' et convertit la date en datetime.
+        Agrège les montants par catégorie et par mois, calcule les totaux et pourcentages, 
+        et prépare un DataFrame prêt à être exporté vers Excel.
 
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
+        Args:
+            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
+            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
 
-        Returns :
-        - pd.DataFrame : DataFrame filtré des revenus.
+        Returns:
+            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par catégorie.
         """
-        df = operation_categorisees[operation_categorisees['categorie'] == 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        return df
+        df_revenus["mois"] = df_revenus["operation_date"].dt.strftime("%b")
+        df_resultat = (
+            df_revenus.groupby(["mois", "category"])['amount']
+            .sum()
+            .reset_index()
+            .sort_values(["mois", "category"])
+        )
 
-    @staticmethod
-    def __get_df_depenses(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        df_pivot = df_resultat.pivot_table(
+            index="category",
+            columns="mois",
+            values='amount',
+            aggfunc="sum",
+            fill_value=0
+        )
+        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
+
+        # Calculer Total et Pourcentage pour chaque sous-catégorie
+        df_pivot["Total"] = df_pivot[months].sum(axis=1)
+        total_general = df_pivot["Total"].sum()
+        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
+
+        # Créer la ligne sheet_name avec les totaux par mois uniquement
+        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
+        revenus_total[''] = ' '                           # colonne vide
+        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
+        revenus_total['Pourcentage'] = 1.0               # 100%
+        revenus_total.name = sheet_name
+
+        # Ajouter la ligne sheet_name au-dessus
+        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
+
+        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
+        df_sorted = pd.concat(
+            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
+        )
+
+        return df_sorted
+
+    def __bilan_subcategories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
         """
-        Filtre les opérations hors 'Revenus', convertit la date et prend la valeur absolue des montants.
+        Agrège les montants par sous-catégorie et par mois, calcule les totaux et pourcentages, 
+        et prépare un DataFrame prêt à être exporté vers Excel.
 
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
+        Args:
+            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
+            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
 
-        Returns :
-        - pd.DataFrame : DataFrame filtré des dépenses avec montants positifs.
+        Returns:
+            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par sous-catégorie.
         """
-        df = operation_categorisees[operation_categorisees['categorie'] != 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        df['montant'] = df['montant'].abs()
-        return df
+        df_revenus["mois"] = df_revenus["operation_date"].dt.strftime("%b")
+        df_resultat = (
+            df_revenus.groupby(["mois", "sub_category"])['amount']
+            .sum()
+            .reset_index()
+            .sort_values(["mois", "sub_category"])
+        )
+
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        df_pivot = df_resultat.pivot_table(
+            index="sub_category",
+            columns="mois",
+            values='amount',
+            aggfunc="sum",
+            fill_value=0
+        )
+        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
+
+        # Calculer Total et Pourcentage pour chaque sous-catégorie
+        df_pivot["Total"] = df_pivot[months].sum(axis=1)
+        total_general = df_pivot["Total"].sum()
+        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
+
+        # Créer la ligne sheet_name avec les totaux par mois uniquement
+        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
+        revenus_total[''] = ' '                           # colonne vide
+        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
+        revenus_total['Pourcentage'] = 1.0               # 100%
+        revenus_total.name = sheet_name
+
+        # Ajouter la ligne sheet_name au-dessus
+        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
+
+        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
+        df_sorted = pd.concat(
+            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
+        )
+
+        return df_sorted

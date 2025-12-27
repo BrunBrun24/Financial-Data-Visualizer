@@ -1,44 +1,41 @@
 import json
-import uuid
-from database.compte_titre import CompteTireBdd
-
 import pandas as pd
+import uuid
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import os
 
+from comptes_bancaires.bnp_paribas.report_data_handler import ReportDataHandler
+from database.compte_titre import CompteTireBdd
 
 class GraphiqueFinancier(CompteTireBdd):
     """
-    La classe `GraphiqueFinancier` génère différents graphiques financiers à partir des opérations 
-    catégorisées d'un compte bancaire. Elle hérite de `CompteTireBdd` et fournit des méthodes pour :
+    Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire. 
+    Elle hérite de `CompteTireBdd` et fournit des méthodes pour :
 
     - Créer des dossiers annuels pour organiser les graphiques.
     - Générer des graphiques Sankey, en barres empilées et circulaires (sunburst) pour visualiser 
     les revenus, les dépenses et leur répartition par catégorie et sous-catégorie.
     - Combiner plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
     - Produire des bilans annuels et mensuels en créant et sauvegardant automatiquement les fichiers HTML.
-
-    Arguments du constructeur :
-        - db_path (str) : chemin vers la base de données contenant les opérations financières.
-        - root_path (str) : chemin vers la où seront enregistré les fichiers.
-
-    Attributs principaux :
-        - _operations_categorisees : DataFrame des opérations financières catégorisées.
-        - _file_plotly : liste interne des figures Plotly générées.
-        - _root_path : chemin du dossier où les fichiers HTML seront sauvegardés.
     """
 
     def __init__(self, db_path: str, root_path: str):
+        """
+        Initialise le générateur de graphiques et charge les données.
+
+        Args :
+        - db_path (str) : Chemin vers la base de données.
+        - root_path (str) : Dossier de destination pour les rapports HTML.
+        """
         super().__init__(db_path)
         self.__root_path = root_path
-        self.__operations_categorisees = self._get_operations_categorisees()
         self.__file_highcharts = []
 
-        self.__create_year_folders()
+        ReportDataHandler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
 
 
-    def main(self, last_year: bool):
+    # --- [ Flux Principal ] ---
+    def generate_all_reports(self, two_last_year_only: bool):
         """
         Génère les bilans financiers annuels et mensuels à partir des opérations catégorisées.
 
@@ -49,13 +46,13 @@ class GraphiqueFinancier(CompteTireBdd):
 
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
 
-        Arguments :
-        - last_year (bool) : si True, ne génère les bilans que pour les deux dernières années disponibles.
+        Args :
+        - two_last_year_only (bool) : si True, génère les bilans pour les deux dernières années disponibles.
         """
-        years_operations_categorisees = self._get_years_operations_categorisees()
+        years_operations_categorisees = self._get_categorized_operations_by_year()
 
         # Créez les graphiques uniquement pour les 2 dernières années
-        if last_year:
+        if two_last_year_only:
             two_last_years = list(years_operations_categorisees.keys())[-2:]
             years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
 
@@ -64,66 +61,69 @@ class GraphiqueFinancier(CompteTireBdd):
 
         for year, operation_categorisees in years_operations_categorisees.items():
             self.__output_file = f"{self.__root_path}{year}/Bilan {year}.html"
-            df_revenus = self.__get_df_revenus(operation_categorisees)
-            df_depenses = self.__get_df_depenses(operation_categorisees)
+            df_revenus = ReportDataHandler._get_income_df(operation_categorisees)
+            df_depenses = ReportDataHandler._get_expense_df(operation_categorisees)
             all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
 
-            self.__bilan_year(df_revenus, df_depenses, operation_categorisees)
-            self.__bilan_year_month(operation_categorisees, year)
+            self.__generate_annual_report(df_revenus, df_depenses, operation_categorisees)
+            self.__generate_monthly_report(operation_categorisees, year)
             
         # Bilan de toutes les années
         annees = list(years_operations_categorisees.keys())
         self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.html"
-        df_revenus = self.__get_df_revenus(all_operation_categorisees)
-        df_depenses = self.__get_df_depenses(all_operation_categorisees)
-        self.__bilan_year(df_revenus, df_depenses, all_operation_categorisees)
+        df_revenus = ReportDataHandler._get_income_df(all_operation_categorisees)
+        df_depenses = ReportDataHandler._get_expense_df(all_operation_categorisees)
+        self.__generate_annual_report(df_revenus, df_depenses, all_operation_categorisees)
 
     
-    def __bilan_year(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
+    # --- [ Production des Bilans ] ---
+    def __generate_annual_report(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
         """
         Crée les graphiques pour le bilan annuel selon la présence de revenus et/ou dépenses.
 
-        Arguments :
+        Args :
             df_revenus (pd.DataFrame) : DataFrame des opérations de revenus.
             df_depenses (pd.DataFrame) : DataFrame des opérations de dépenses.
             df_all (pd.DataFrame) : DataFrame complet des opérations (revenus + dépenses).
         """
 
         if (not df_revenus.empty) and (not df_depenses.empty):
-            self.__compte_courant_revenus_depenses(df_revenus, df_depenses, df_all)
+            self.__compte_courant_income_expenses(df_revenus, df_depenses, df_all)
         elif (not df_revenus.empty) and (df_depenses.empty):
-            self.__compte_courant_revenus(df_revenus)
+            self.__compte_courant_income(df_revenus)
         else:
-            self.__compte_courant_depenses(df_depenses)
+            self.__compte_courant_expenses(df_depenses)
             
-    def __bilan_year_month(self, df_all: pd.DataFrame, year: int):
+    def __generate_monthly_report(self, df_all: pd.DataFrame, year: int):
         """
         Génère les graphiques mensuels pour le bilan d'une année donnée.
 
-        Arguments :
+        Args :
             df_all (pd.DataFrame) : DataFrame complet des opérations financières de l'année.
             year (int) : Année pour laquelle les graphiques mensuels sont créés.
         """
-        month_operations_categorisees = self.__get_month_operations_categorisees(df_all)
+        month_operations_categorisees = self.__get_categorized_month_operations(df_all)
 
         for month, operations_categorisees in month_operations_categorisees.items():
             self.__output_file = f"{self.__root_path}{year}/{year}-{month}.html"
-            df_revenus_month = self.__get_df_revenus(operations_categorisees)
-            df_depenses_month = self.__get_df_depenses(operations_categorisees)
+            df_revenus_month = ReportDataHandler._get_income_df(operations_categorisees)
+            df_depenses_month = ReportDataHandler._get_expense_df(operations_categorisees)
             df_all_month = pd.concat([df_revenus_month, df_depenses_month], ignore_index=True)
 
             if (not df_revenus_month.empty) and (not df_depenses_month.empty):
-                self.__compte_courant_revenus_depenses(df_revenus_month, df_depenses_month, df_all_month)
+                self.__compte_courant_income_expenses(df_revenus_month, df_depenses_month, df_all_month)
             elif (not df_revenus_month.empty) and (df_depenses_month.empty):
-                self.__compte_courant_revenus(df_revenus_month)
+                self.__compte_courant_income(df_revenus_month)
             else:
-                self.__compte_courant_depenses(df_depenses_month)
+                self.__compte_courant_expenses(df_depenses_month)
 
-    def __compte_courant_revenus_depenses(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
+
+    # --- [ Traitement des Données ] ---
+    def __compte_courant_income_expenses(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
         """
         Génère et organise les graphiques pour un compte courant avec revenus et dépenses.
 
-        Arguments :
+        Args :
             df_revenus (pd.DataFrame) : DataFrame contenant les opérations de revenus.
             df_depenses (pd.DataFrame) : DataFrame contenant les opérations de dépenses.
             df_all (pd.DataFrame) : DataFrame combinant toutes les opérations (revenus + dépenses).
@@ -136,45 +136,45 @@ class GraphiqueFinancier(CompteTireBdd):
             - Combine plusieurs graphiques côte à côte si nécessaire.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
-        self.__generer_fichier_html(df_all)
+        self.__generate_html_file(df_all)
 
-        # Filtrer les lignes où la colonne 'categorie' n'est pas 'Investissement' ni "Épargne"
+        # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement' ni "Épargne"
         df_filtre = df_depenses[
-            (df_depenses['categorie'] != 'Investissement') &
-            (df_depenses['categorie'] != 'Épargne')
+            (df_depenses['category'] != 'Investissement') &
+            (df_depenses['category'] != 'Épargne')
         ]
         # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
         if (df_depenses.equals(df_filtre)) or (df_filtre.empty):
-            self.__graphique_circulaire(df=df_depenses, name="Dépenses")
+            self.__create_pie_chart(df=df_depenses, name="Dépenses")
         else:
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
-            fig_soleil_depenses = self.__graphique_circulaire(df=df_filtre, name="Dépenses", save=False)
-            fig_soleil = self.__graphique_circulaire(df=df_depenses, name="Dépenses + Investissement", save=False)
+            fig_soleil_depenses = self.__create_pie_chart(df=df_filtre, name="Dépenses", save=False)
+            fig_soleil = self.__create_pie_chart(df=df_depenses, name="Dépenses + Investissement", save=False)
         
             # Création des graphiques dans l'ordre dans le fichier
-            self.__combiner_graphiques(fig_soleil_depenses, fig_soleil)
+            self.__create_combined_charts(fig_soleil_depenses, fig_soleil)
         
-        # Filtrer les lignes où la colonne 'sous_categorie' n'est pas 'Virements internes'
-        df_filtre = df_revenus[df_revenus['sous_categorie'] != 'Virements internes']
+        # Filtrer les lignes où la colonne 'sub_category' n'est pas 'Virements internes'
+        df_filtre = df_revenus[df_revenus['sub_category'] != 'Virements internes']
         # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
         if df_filtre.equals(df_revenus):
             # Si les deux DataFrames sont identiques, créer un seul graphique
-            self.__graphique_circulaire(df=df_filtre, name="Revenus gagné")
+            self.__create_pie_chart(df=df_filtre, name="Revenus gagné")
         else:
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
-            fig_soleil_revenus = self.__graphique_circulaire(df=df_filtre, name="Revenus gagné", save=False)
-            fig_soleil_all_revenus = self.__graphique_circulaire(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
+            fig_soleil_revenus = self.__create_pie_chart(df=df_filtre, name="Revenus gagné", save=False)
+            fig_soleil_all_revenus = self.__create_pie_chart(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
             
             # Création des graphiques combinés dans l'ordre
-            self.__combiner_graphiques(fig_soleil_revenus, fig_soleil_all_revenus)
+            self.__create_combined_charts(fig_soleil_revenus, fig_soleil_all_revenus)
 
         self.__save_in_file()
 
-    def __compte_courant_depenses(self, df_depenses: pd.DataFrame):
+    def __compte_courant_expenses(self, df_depenses: pd.DataFrame):
         """
         Génère et organise les graphiques pour un compte courant ne contenant que des dépenses.
 
-        Arguments :
+        Args :
             df_depenses (pd.DataFrame) : DataFrame contenant les opérations de dépenses.
 
         Actions :
@@ -183,32 +183,32 @@ class GraphiqueFinancier(CompteTireBdd):
             - Combine plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
-        self.__generer_fichier_html(df_depenses)
+        self.__generate_html_file(df_depenses)
 
-        # Filtrer les lignes où la colonne 'categorie' n'est pas 'Investissement' ni "Épargne"
+        # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement' ni "Épargne"
         df_filtre = df_depenses[
-            (df_depenses['categorie'] != 'Investissement') &
-            (df_depenses['categorie'] != 'Épargne')
+            (df_depenses['category'] != 'Investissement') &
+            (df_depenses['category'] != 'Épargne')
         ]
         
         # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
         if (df_depenses.equals(df_filtre)) or (df_filtre.empty):
-            self.__graphique_circulaire(df=df_depenses, name="Dépenses")
+            self.__create_pie_chart(df=df_depenses, name="Dépenses")
         else:
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
-            fig_soleil_depenses = self.__graphique_circulaire(df=df_filtre, name="Dépenses", save=False)
-            fig_soleil = self.__graphique_circulaire(df=df_depenses, name="Dépenses + Investissement", save=False)
+            fig_soleil_depenses = self.__create_pie_chart(df=df_filtre, name="Dépenses", save=False)
+            fig_soleil = self.__create_pie_chart(df=df_depenses, name="Dépenses + Investissement", save=False)
         
             # Création des graphiques dans l'ordre dans le fichier
-            self.__combiner_graphiques(fig_soleil_depenses, fig_soleil)
+            self.__create_combined_charts(fig_soleil_depenses, fig_soleil)
 
         self.__save_in_file()
 
-    def __compte_courant_revenus(self, df_revenus: pd.DataFrame):
+    def __compte_courant_income(self, df_revenus: pd.DataFrame):
         """
         Génère et organise les graphiques pour un compte courant contenant uniquement des revenus.
 
-        Arguments :
+        Args :
             df_revenus (pd.DataFrame) : DataFrame contenant les opérations de revenus.
 
         Actions :
@@ -216,27 +216,48 @@ class GraphiqueFinancier(CompteTireBdd):
             - Combine plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
-        self.__generer_fichier_html(df_revenus)
-        # Filtrer les lignes où la colonne 'sous_categorie' n'est pas 'Virements internes'
-        df_filtre = df_revenus[df_revenus['sous_categorie'] != 'Virements internes']
+        self.__generate_html_file(df_revenus)
+        # Filtrer les lignes où la colonne 'sub_category' n'est pas 'Virements internes'
+        df_filtre = df_revenus[df_revenus['sub_category'] != 'Virements internes']
         
         # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
         if df_filtre.equals(df_revenus):
             # Si les deux DataFrames sont identiques, créer un seul graphique
-            self.__graphique_circulaire(df=df_filtre, name="Revenus gagné")
+            self.__create_pie_chart(df=df_filtre, name="Revenus gagné")
         else:
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
-            fig_soleil_revenus = self.__graphique_circulaire(df=df_filtre, name="Revenus gagné", save=False)
-            fig_soleil_all_revenus = self.__graphique_circulaire(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
+            fig_soleil_revenus = self.__create_pie_chart(df=df_filtre, name="Revenus gagné", save=False)
+            fig_soleil_all_revenus = self.__create_pie_chart(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
             
             # Création des graphiques combinés dans l'ordre
-            self.__combiner_graphiques(fig_soleil_revenus, fig_soleil_all_revenus)
+            self.__create_combined_charts(fig_soleil_revenus, fig_soleil_all_revenus)
         
         # Enregistrer les graphiques dans un fichier
         self.__save_in_file()
 
+    def __save_in_file(self):
+        """
+        Enregistre tous les graphiques générés dans un fichier HTML.
+        Accepte à la fois :
+        - des figures Plotly (go.Figure)
+        - du HTML brut (str)
+        """
+        with open(self.__output_file, "w", encoding="utf-8") as f:
+            for item in self.__file_highcharts:
+                if isinstance(item, str):
+                    # HTML brut (ex: Highcharts)
+                    f.write(item)
+                else:
+                    # Figure Plotly
+                    item.write_html(f, include_plotlyjs="cdn")
+
+        # Reset après écriture
+        self.__file_highcharts = []
+
+
+    # --- [ Génération de Graphiques ] ---
     @staticmethod
-    def __graphique_sankey(df_all: pd.DataFrame) -> str:
+    def __create_sankey_chart(df_all: pd.DataFrame) -> str:
         """
         Génère le code HTML/JavaScript nécessaire pour afficher un diagramme de Sankey interactif.
 
@@ -255,7 +276,7 @@ class GraphiqueFinancier(CompteTireBdd):
 
         Args:
             df_all (pd.DataFrame): Données brutes contenant au minimum les colonnes 
-                                   ['annee', 'categorie', 'sous_categorie', 'montant'].
+                                   ['year', 'category', 'sub_category', 'amount'].
 
         Returns:
             str: Bloc de code HTML contenant le conteneur du graphique, le sélecteur 
@@ -265,13 +286,13 @@ class GraphiqueFinancier(CompteTireBdd):
         graph_id = "sankey_" + str(uuid.uuid4()).replace('-', '_')
 
         # Tri des années : reverse=True pour avoir la plus récente en premier
-        years = sorted([int(y) for y in df_all['annee'].unique()], reverse=True)
+        years = sorted([int(y) for y in df_all['year'].unique()], reverse=True)
         multiple_years = len(years) > 1
 
         df_copy = df_all.copy()
-        df_copy['date_operation'] = df_copy['date_operation'].astype(str)
-        df_copy['montant'] = df_copy['montant'].astype(float)
-        df_copy['annee'] = df_copy['annee'].astype(int)
+        df_copy['operation_date'] = df_copy['operation_date'].astype(str)
+        df_copy['amount'] = df_copy['amount'].astype(float)
+        df_copy['year'] = df_copy['year'].astype(int)
         data_json = json.dumps(df_copy.to_dict(orient='records'), ensure_ascii=False)
 
         # Couleurs pour les flux
@@ -302,7 +323,7 @@ class GraphiqueFinancier(CompteTireBdd):
 
                 function buildSankeyLinks(selectedYear) {{
                     let links = [];
-                    const filteredData = sankeyData.filter(d => d.annee === selectedYear);
+                    const filteredData = sankeyData.filter(d => d.year === selectedYear);
 
                     // --- Revenus ---
                     const revenus = filteredData.filter(d => d.categorie === "Revenus");
@@ -401,8 +422,51 @@ class GraphiqueFinancier(CompteTireBdd):
         """
         return html
     
+    def __create_pie_chart(self, df: pd.DataFrame, name: str, save: bool = True) -> go.Figure:
+        """
+        Crée un graphique circulaire (sunburst) représentant la répartition des montants par catégorie et sous-catégorie.
+
+        Args :
+            df (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
+            name (str) : nom du graphique ou du nœud racine.
+            save (bool, optionnel) : indique si le graphique doit être sauvegardé dans la liste interne (par défaut True).
+
+        Returns :
+            go.Figure : objet figure Plotly contenant le graphique circulaire généré.
+        """
+        labels = [name]
+        parents = ['']
+        values = [df['amount'].sum()]
+
+        for categorie in df['category'].unique():
+            labels.append(categorie)
+            parents.append(name)
+            values.append(df[df['category'] == categorie]['amount'].sum())
+
+            for type_op in df[df['category'] == categorie]['sub_category'].unique():
+                labels.append(type_op)
+                parents.append(categorie)
+                values.append(df[(df['category'] == categorie) & (df['sub_category'] == type_op)]['amount'].sum())
+
+        fig = go.Figure(go.Sunburst(
+            labels=labels,
+            parents=parents,
+            values=values,
+            branchvalues='total',
+            textinfo='label+percent entry'
+        ))
+        fig.update_layout(
+            showlegend=True,
+            width=1800,
+            height=900,
+            margin=dict(l=200, r=100, t=50, b=50)
+        )
+        if save:
+            self.__file_highcharts.append(fig)
+        return fig
+
     @staticmethod
-    def __graphique_evol_revenus_depenses_switch(df_all: pd.DataFrame) -> str:
+    def __create_income_expense_evolution_chart(df_all: pd.DataFrame) -> str:
         """
         Génère un tableau de bord interactif Highcharts avec bascule Revenus/Dépenses.
 
@@ -423,40 +487,40 @@ class GraphiqueFinancier(CompteTireBdd):
             -   Ligne de variation (%) : Calcule le taux de croissance entre deux périodes.
 
         Args:
-            df_all (pd.DataFrame): DataFrame contenant les colonnes 'date_operation', 
-                                   'categorie', 'sous_categorie' et 'montant'.
+            df_all (pd.DataFrame): DataFrame contenant les colonnes 'operation_date', 
+                                   'category', 'sub_category' et 'amount'.
 
         Returns:
             str: Fragment HTML/JS complet incluant le CSS personnalisé (switch toggle), 
                  les contrôles d'interface (radio, select) et la logique Highcharts.
         """
         # Préparation des dates
-        df_all["date_operation"] = pd.to_datetime(df_all["date_operation"]) 
-        df_all["annee"] = df_all["date_operation"].dt.year
-        df_all["month"] = df_all["date_operation"].dt.month
+        df_all["operation_date"] = pd.to_datetime(df_all["operation_date"]) 
+        df_all["year"] = df_all["operation_date"].dt.year
+        df_all["month"] = df_all["operation_date"].dt.month
 
         # MODIFICATION : Tri décroissant pour le menu (le graphique gère son propre tri)
-        years = sorted(df_all["annee"].unique().tolist(), reverse=True)
+        years = sorted(df_all["year"].unique().tolist(), reverse=True)
         months_labels = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc']
 
         # --- Séparation des données : Revenus vs Dépenses ---
-        df_rev = df_all[df_all['categorie'] == 'Revenus']
-        df_dep = df_all[df_all['categorie'] != 'Revenus']
+        df_rev = df_all[df_all['category'] == 'Revenus']
+        df_dep = df_all[df_all['category'] != 'Revenus']
 
         datasets = {
-            'revenus': {'data': {}, 'categories': sorted(df_rev['sous_categorie'].unique().tolist())},
-            'depenses': {'data': {}, 'categories': sorted(df_dep['categorie'].unique().tolist())}
+            'revenus': {'data': {}, 'categories': sorted(df_rev['sub_category'].unique().tolist())},
+            'depenses': {'data': {}, 'categories': sorted(df_dep['category'].unique().tolist())}
         }
 
         def fill_data(sub_df, type_key, is_revenu):
-            cat_col = 'sous_categorie' if is_revenu else 'categorie'
+            cat_col = 'sub_category' if is_revenu else 'category'
             for cat in datasets[type_key]['categories']:
                 datasets[type_key]['data'][cat] = {}
                 # On utilise years_graph (croissant) pour la structure de données interne
                 years_internal = sorted(years)
                 for y in years_internal:
-                    vals = sub_df[(sub_df[cat_col]==cat) & (sub_df.annee==y)] \
-                        .groupby('month')['montant'].sum().abs() \
+                    vals = sub_df[(sub_df[cat_col]==cat) & (sub_df.year==y)] \
+                        .groupby('month')['amount'].sum().abs() \
                         .reindex(range(1,13), fill_value=0).tolist()
                     datasets[type_key]['data'][cat][y] = [round(v, 2) for v in vals]
 
@@ -729,8 +793,40 @@ class GraphiqueFinancier(CompteTireBdd):
             """
         return html
     
+    def __create_combined_charts(self, fig1: go.Figure, fig2: go.Figure, save: bool = True) -> go.Figure:
+        """
+        Combine deux graphiques sunburst côte à côte dans une seule figure.
+
+        Args :
+            fig1 (go.Figure) : premier graphique sunburst.
+            fig2 (go.Figure) : second graphique sunburst.
+            save (bool, optionnel) : indique si la figure combinée doit être sauvegardée dans la liste interne (par défaut True).
+
+        Returns :
+            go.Figure : objet figure Plotly contenant les deux graphiques combinés.
+        """
+        fig_combined = make_subplots(
+            rows=1, cols=2,
+            specs=[[{"type": "sunburst"}, {"type": "sunburst"}]]
+        )
+
+        for trace in fig1.data:
+            fig_combined.add_trace(trace, row=1, col=1)
+        for trace in fig2.data:
+            fig_combined.add_trace(trace, row=1, col=2)
+
+        fig_combined.update_layout(
+            showlegend=True,
+            width=1800,
+            height=900,
+            margin=dict(l=200, r=100, t=50, b=50)
+        )
+        if save:
+            self.__file_highcharts.append(fig_combined)
+        return fig_combined
+
     @staticmethod
-    def __graphique_histogramme_revenus_and_depenses(df_all: pd.DataFrame) -> str:
+    def __create_income_expense_bar_chart(df_all: pd.DataFrame) -> str:
         """
         Génère un histogramme comparatif empilé (Stacked Bar Chart) pour l'analyse globale.
 
@@ -755,25 +851,25 @@ class GraphiqueFinancier(CompteTireBdd):
             -   Vue Détaillée : Option pour ventiler les colonnes par catégories/sous-catégories.
 
         Args:
-            df_all (pd.DataFrame): Données transactionnelles avec colonnes 'date_operation', 
-                                   'categorie', 'sous_categorie' et 'montant'.
+            df_all (pd.DataFrame): Données transactionnelles avec colonnes 'operation_date', 
+                                   'category', 'sub_categories' et 'amount'.
 
         Returns:
             str: Code HTML/JS complet intégrant le sélecteur d'année, les options de vue 
                  et le graphique Highcharts avec calcul automatique de l'épargne.
         """
-        df_all["annee"] = df_all["date_operation"].dt.year
-        df_all["month"] = df_all["date_operation"].dt.month
+        df_all["year"] = df_all["operation_date"].dt.year
+        df_all["month"] = df_all["operation_date"].dt.month
 
         # Construction de la structure DATA
         data_dict = {}
-        for cat, cat_df in df_all.groupby("categorie"):
+        for cat, cat_df in df_all.groupby('category'):
             data_dict[cat] = {}
-            for sub_cat, sub_df in cat_df.groupby("sous_categorie"):
+            for sub_cat, sub_df in cat_df.groupby("sub_category"):
                 data_dict[cat][sub_cat] = {}
-                for year, year_df in sub_df.groupby("annee"):
+                for year, year_df in sub_df.groupby("year"):
                     # Calcul de la somme mensuelle.
-                    monthly = year_df.groupby(year_df["date_operation"].dt.month)['montant'].sum().abs().reindex(range(1,13), fill_value=0).tolist()
+                    monthly = year_df.groupby(year_df["operation_date"].dt.month)['amount'].sum().abs().reindex(range(1,13), fill_value=0).tolist()
                     data_dict[cat][sub_cat][int(year)] = [round(m, 2) for m in monthly]
 
         json_data = json.dumps(data_dict, indent=2)
@@ -979,7 +1075,7 @@ class GraphiqueFinancier(CompteTireBdd):
         """
         return html
     
-    def __generer_fichier_html(self, df_all: pd.DataFrame):
+    def __generate_html_file(self, df_all: pd.DataFrame):
         """
         Assemble et compile l'ensemble des visualisations dans un document HTML unique.
 
@@ -1009,180 +1105,34 @@ class GraphiqueFinancier(CompteTireBdd):
             </head>
             <body>
         """
-        html += self.__graphique_histogramme_revenus_and_depenses(df_all)
-        html += self.__graphique_evol_revenus_depenses_switch(df_all)
-        html += self.__graphique_sankey(df_all)
+        html += self.__create_income_expense_bar_chart(df_all)
+        html += self.__create_income_expense_evolution_chart(df_all)
+        html += self.__create_sankey_chart(df_all)
         html += "</body></html>"
 
         self.__file_highcharts.append(html)
 
-    def __graphique_circulaire(self, df: pd.DataFrame, name: str, save: bool = True) -> go.Figure:
-        """
-        Crée un graphique circulaire (sunburst) représentant la répartition des montants par catégorie et sous-catégorie.
 
-        Arguments :
-            df (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-            name (str) : nom du graphique ou du nœud racine.
-            save (bool, optionnel) : indique si le graphique doit être sauvegardé dans la liste interne (par défaut True).
-
-        Returns :
-            go.Figure : objet figure Plotly contenant le graphique circulaire généré.
-        """
-        labels = [name]
-        parents = ['']
-        values = [df['montant'].sum()]
-
-        for categorie in df['categorie'].unique():
-            labels.append(categorie)
-            parents.append(name)
-            values.append(df[df['categorie'] == categorie]['montant'].sum())
-
-            for type_op in df[df['categorie'] == categorie]['sous_categorie'].unique():
-                labels.append(type_op)
-                parents.append(categorie)
-                values.append(df[(df['categorie'] == categorie) & (df['sous_categorie'] == type_op)]['montant'].sum())
-
-        fig = go.Figure(go.Sunburst(
-            labels=labels,
-            parents=parents,
-            values=values,
-            branchvalues='total',
-            textinfo='label+percent entry'
-        ))
-        fig.update_layout(
-            showlegend=True,
-            width=1800,
-            height=900,
-            margin=dict(l=200, r=100, t=50, b=50)
-        )
-        if save:
-            self.__file_highcharts.append(fig)
-        return fig
-
-    def __combiner_graphiques(self, fig1: go.Figure, fig2: go.Figure, save: bool = True) -> go.Figure:
-        """
-        Combine deux graphiques sunburst côte à côte dans une seule figure.
-
-        Arguments :
-            fig1 (go.Figure) : premier graphique sunburst.
-            fig2 (go.Figure) : second graphique sunburst.
-            save (bool, optionnel) : indique si la figure combinée doit être sauvegardée dans la liste interne (par défaut True).
-
-        Returns :
-            go.Figure : objet figure Plotly contenant les deux graphiques combinés.
-        """
-        fig_combined = make_subplots(
-            rows=1, cols=2,
-            specs=[[{"type": "sunburst"}, {"type": "sunburst"}]]
-        )
-
-        for trace in fig1.data:
-            fig_combined.add_trace(trace, row=1, col=1)
-        for trace in fig2.data:
-            fig_combined.add_trace(trace, row=1, col=2)
-
-        fig_combined.update_layout(
-            showlegend=True,
-            width=1800,
-            height=900,
-            margin=dict(l=200, r=100, t=50, b=50)
-        )
-        if save:
-            self.__file_highcharts.append(fig_combined)
-        return fig_combined
-
-    def __save_in_file(self):
-        """
-        Enregistre tous les graphiques générés dans un fichier HTML.
-        Accepte à la fois :
-        - des figures Plotly (go.Figure)
-        - du HTML brut (str)
-        """
-        with open(self.__output_file, "w", encoding="utf-8") as f:
-            for item in self.__file_highcharts:
-                if isinstance(item, str):
-                    # HTML brut (ex: Highcharts)
-                    f.write(item)
-                else:
-                    # Figure Plotly
-                    item.write_html(f, include_plotlyjs="cdn")
-
-        # Reset après écriture
-        self.__file_highcharts = []
-
-    def __create_year_folders(self):
-        """
-        Crée les dossiers pour chaque année à partir des opérations catégorisées.
-
-        - Crée d’abord le dossier principal `self.__root_path`.
-        - Extrait l'année de chaque opération dans `self.__operations_categorisees`.
-        - Crée un sous-dossier pour chaque année unique à l’intérieur du dossier principal.
-        """
-        # Création du dossier principal
-        os.makedirs(self.__root_path, exist_ok=True)
-
-        # On suppose que self.__operations_categorisees est un DataFrame pandas
-        df = self.__operations_categorisees.copy()
-        df["annee"] = df["date_operation"].dt.year
-
-        # Liste des années uniques
-        annees = sorted(df["annee"].unique())
-
-        # Création des sous-dossiers par année
-        for annee in annees:
-            year_path = os.path.join(self.__root_path, str(annee))
-            os.makedirs(year_path, exist_ok=True)
-
+    # --- [ Récupération des Données ] ---
     @staticmethod
-    def __get_month_operations_categorisees(df_all: pd.DataFrame) -> dict:
+    def __get_categorized_month_operations(df_all: pd.DataFrame) -> dict:
         """
         Regroupe les opérations catégorisées par mois.
 
-        Arguments :
+        Args :
         - df_all (pd.DataFrame) : DataFrame contenant les opérations catégorisées, 
-                                avec une colonne 'date_operation' de type datetime.
+                                avec une colonne 'operation_date' de type datetime.
 
         Returns :
         - dict : dictionnaire { mois (str) : DataFrame des opérations de ce mois }
         """
         # Extraction de l'année
-        df_all["month"] = df_all["date_operation"].dt.strftime('%m')
+        df_all["month"] = df_all["operation_date"].dt.strftime('%m')
 
         month_dict = {}
 
         # Groupement par année
-        for annee, df_annee in df_all.groupby("month"):
-            month_dict[annee] = df_annee.reset_index(drop=True)
+        for year, df_annee in df_all.groupby("month"):
+            month_dict[year] = df_annee.reset_index(drop=True)
 
         return month_dict
-
-    @staticmethod
-    def __get_df_revenus(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filtre les opérations de la catégorie 'Revenus' et convertit la date en datetime.
-
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
-
-        Returns :
-        - pd.DataFrame : DataFrame filtré des revenus.
-        """
-        df = operation_categorisees[operation_categorisees['categorie'] == 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        return df
-
-    @staticmethod
-    def __get_df_depenses(operation_categorisees: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filtre les opérations hors 'Revenus', convertit la date et prend la valeur absolue des montants.
-
-        Arguments :
-        - operation_categorisees (pd.DataFrame) : DataFrame des opérations catégorisées.
-
-        Returns :
-        - pd.DataFrame : DataFrame filtré des dépenses avec montants positifs.
-        """
-        df = operation_categorisees[operation_categorisees['categorie'] != 'Revenus'].copy()
-        df["date_operation"] = pd.to_datetime(df["date_operation"])
-        df['montant'] = df['montant'].abs()
-        return df

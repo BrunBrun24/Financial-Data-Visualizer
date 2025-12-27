@@ -4,7 +4,6 @@ import pandas as pd
 import xlrd
 from datetime import datetime, timedelta
 
-
 def select_and_extract_data(initial_dir: str) -> (pd.DataFrame | None):
     """
     Ouvre un dialogue de sélection de fichier Excel dans un dossier donné et retourne les données extraites.
