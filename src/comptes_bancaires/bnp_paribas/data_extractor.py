@@ -1,8 +1,10 @@
 import tkinter as tk
+from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox
+
 import pandas as pd
 import xlrd
-from datetime import datetime, timedelta
+
 
 def select_and_extract_data(initial_dir: str) -> (pd.DataFrame | None):
     """

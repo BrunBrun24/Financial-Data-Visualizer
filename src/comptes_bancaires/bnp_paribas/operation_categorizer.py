@@ -1,7 +1,8 @@
-import tkinter as tk
 import re
+import tkinter as tk
 
 from database.compte_titre import CompteTireBdd
+
 
 class OperationCategorizer(CompteTireBdd):
     """
