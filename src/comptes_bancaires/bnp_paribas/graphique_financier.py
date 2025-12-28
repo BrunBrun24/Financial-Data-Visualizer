@@ -33,7 +33,8 @@ class GraphiqueFinancier(CompteTireBdd):
         self.__root_path = root_path
         self.__file_highcharts = []
 
-        ReportDataHandler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
+        self.report_data_handler = ReportDataHandler()
+        self.report_data_handler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
 
 
     # --- [ Flux Principal ] ---
@@ -63,8 +64,8 @@ class GraphiqueFinancier(CompteTireBdd):
 
         for year, operation_categorisees in years_operations_categorisees.items():
             self.__output_file = f"{self.__root_path}{year}/Bilan {year}.html"
-            df_revenus = ReportDataHandler._get_income_df(operation_categorisees)
-            df_depenses = ReportDataHandler._get_expense_df(operation_categorisees)
+            df_revenus = self.report_data_handler._get_income_df(operation_categorisees)
+            df_depenses = self.report_data_handler._get_expense_df(operation_categorisees)
             all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
 
             self.__generate_annual_report(df_revenus, df_depenses, operation_categorisees)
@@ -73,8 +74,8 @@ class GraphiqueFinancier(CompteTireBdd):
         # Bilan de toutes les années
         annees = list(years_operations_categorisees.keys())
         self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.html"
-        df_revenus = ReportDataHandler._get_income_df(all_operation_categorisees)
-        df_depenses = ReportDataHandler._get_expense_df(all_operation_categorisees)
+        df_revenus = self.report_data_handler._get_income_df(all_operation_categorisees)
+        df_depenses = self.report_data_handler._get_expense_df(all_operation_categorisees)
         self.__generate_annual_report(df_revenus, df_depenses, all_operation_categorisees)
 
     
@@ -108,8 +109,8 @@ class GraphiqueFinancier(CompteTireBdd):
 
         for month, operations_categorisees in month_operations_categorisees.items():
             self.__output_file = f"{self.__root_path}{year}/{year}-{month}.html"
-            df_revenus_month = ReportDataHandler._get_income_df(operations_categorisees)
-            df_depenses_month = ReportDataHandler._get_expense_df(operations_categorisees)
+            df_revenus_month = self.report_data_handler._get_income_df(operations_categorisees)
+            df_depenses_month = self.report_data_handler._get_expense_df(operations_categorisees)
             df_all_month = pd.concat([df_revenus_month, df_depenses_month], ignore_index=True)
 
             if (not df_revenus_month.empty) and (not df_depenses_month.empty):
@@ -272,7 +273,7 @@ class GraphiqueFinancier(CompteTireBdd):
 
         Fonctionnalités incluses :
         - Filtrage dynamique par année via un menu déroulant (Select).
-        - Tri automatique des dépenses par montant décroissant pour la lisibilité.
+        - Tri automatique des dépenses par amount décroissant pour la lisibilité.
         - Gestion automatique des couleurs par branche (une couleur par catégorie de dépense).
         - Formatage des montants (valeurs absolues pour les dépenses et arrondi à 2 décimales).
 
@@ -328,23 +329,23 @@ class GraphiqueFinancier(CompteTireBdd):
                     const filteredData = sankeyData.filter(d => d.year === selectedYear);
 
                     // --- Revenus ---
-                    const revenus = filteredData.filter(d => d.categorie === "Revenus");
+                    const revenus = filteredData.filter(d => d.category === "Revenus");
                     const revenus_souscat = {{}};
-                    revenus.forEach(d => {{ revenus_souscat[d.sous_categorie] = (revenus_souscat[d.sous_categorie] || 0) + d.montant; }});
+                    revenus.forEach(d => {{ revenus_souscat[d.sub_category] = (revenus_souscat[d.sub_category] || 0) + d.amount; }});
                     
                     Object.entries(revenus_souscat).forEach(([s, v]) => {{
                         links.push({{ from: s, to: "Revenus", weight: round2(v) }});
                     }});
                     
                     // --- Dépenses ---
-                    const depenses = filteredData.filter(d => d.categorie !== "Revenus").map(d => ({{
+                    const depenses = filteredData.filter(d => d.category !== "Revenus").map(d => ({{
                         ...d,
-                        montant: Math.abs(d.montant)
+                        amount: Math.abs(d.amount)
                     }}));
 
                     const depCatsTotals = {{}};
                     depenses.forEach(d => {{ 
-                        depCatsTotals[d.categorie] = (depCatsTotals[d.categorie] || 0) + d.montant; 
+                        depCatsTotals[d.category] = (depCatsTotals[d.category] || 0) + d.amount; 
                     }});
                     
                     let sortedDepCats = Object.entries(depCatsTotals);
@@ -361,8 +362,8 @@ class GraphiqueFinancier(CompteTireBdd):
                         }});
 
                         const subs = {{}};
-                        depenses.filter(d => d.categorie === cat).forEach(d => {{ 
-                            subs[d.sous_categorie] = (subs[d.sous_categorie] || 0) + d.montant; 
+                        depenses.filter(d => d.category === cat).forEach(d => {{ 
+                            subs[d.sub_category] = (subs[d.sub_category] || 0) + d.amount; 
                         }});
                         
                         Object.entries(subs).forEach(([s, amt]) => {{
@@ -440,15 +441,15 @@ class GraphiqueFinancier(CompteTireBdd):
         parents = ['']
         values = [df['amount'].sum()]
 
-        for categorie in df['category'].unique():
-            labels.append(categorie)
+        for category in df['category'].unique():
+            labels.append(category)
             parents.append(name)
-            values.append(df[df['category'] == categorie]['amount'].sum())
+            values.append(df[df['category'] == category]['amount'].sum())
 
-            for type_op in df[df['category'] == categorie]['sub_category'].unique():
+            for type_op in df[df['category'] == category]['sub_category'].unique():
                 labels.append(type_op)
-                parents.append(categorie)
-                values.append(df[(df['category'] == categorie) & (df['sub_category'] == type_op)]['amount'].sum())
+                parents.append(category)
+                values.append(df[(df['category'] == category) & (df['sub_category'] == type_op)]['amount'].sum())
 
         fig = go.Figure(go.Sunburst(
             labels=labels,
