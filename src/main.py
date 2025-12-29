@@ -8,6 +8,7 @@ from bank_accounts.trade_republic.trade_republic_importer import (
     TradeRepublicImporter,
 )
 from database.bnp_paribas_database import BnpParibasDatabase
+from wealth_management.wealth_dashboard import WealthDashboard
 
 
 def compte_upgrade(db_path: str, save_file_path: str, initial_dir: str, two_last_years: bool):
@@ -49,6 +50,9 @@ def main():
     bnp_paribas_all_compte("data/bnp paribas/all/all.db", "data/bnp paribas/compte chèques/compte chèques.db", "data/bnp paribas/livret A/livret A.db", "Bilan/Bnp Paribas/All/", two_last_years)
 
     trade_republic("data/bourse/Trade Republic.db", "Bilan/Trade Repubic/")
+
+    wealth_engine = WealthDashboard("data/bnp paribas/compte chèques/compte chèques.db", "data/bnp paribas/livret A/livret A.db", "data/bourse/Trade Republic.db")
+    wealth_engine.generate_wealth_report("Bilan/")
     
 
 if __name__ == "__main__":
