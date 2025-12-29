@@ -4,14 +4,14 @@ import sqlite3
 
 import pandas as pd
 
-from .bdd import Bdd
+from .base_database import BaseDatabase
 
 
-class CompteTireBdd(Bdd):
+class BnpParibasDatabase(BaseDatabase):
     """
     Gère l'accès et la manipulation des données financières d'un compte bancaire.
 
-    Cette classe hérite de `Bdd` et fournit des fonctionnalités pour :
+    Cette classe hérite de `BaseDatabase` et fournit des fonctionnalités pour :
     - Créer et maintenir la structure de la base de données en anglais.
     - Ajouter et récupérer des opérations financières.
     - Vérifier la cohérence des catégories par rapport à la configuration.

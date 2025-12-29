@@ -1,10 +1,10 @@
 import re
 import tkinter as tk
 
-from database.compte_titre import CompteTireBdd
+from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class OperationCategorizer(CompteTireBdd):
+class OperationCategorizer(BnpParibasDatabase):
     """
     Fournit une interface graphique pour la catégorisation des opérations financières.
 

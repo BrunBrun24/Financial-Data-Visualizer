@@ -7,10 +7,10 @@ from datetime import datetime
 import pandas as pd
 import yfinance as yf
 
-from .bdd import Bdd
+from .base_database import BaseDatabase
 
 
-class TradeRepublicDatabase(Bdd):
+class TradeRepublicDatabase(BaseDatabase):
     """
     Cette classe gère la persistance et la structure des données financières 
     spécifiques à Trade Republic dans une base de données SQLite.

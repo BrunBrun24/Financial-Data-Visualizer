@@ -7,12 +7,12 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
-from database.compte_titre import CompteTireBdd
+from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class ExcelReportGenerator(CompteTireBdd):
+class ExcelReportGenerator(BnpParibasDatabase):
     """
-    La classe `ExcelReportGenerator` hérite de `CompteTireBdd` et fournit des outils pour générer des rapports Excel
+    La classe `ExcelReportGenerator` hérite de `BnpParibasDatabase` et fournit des outils pour générer des rapports Excel
     à partir des opérations financières catégorisées. Elle permet de :
 
     - Créer des dossiers annuels pour stocker les rapports.

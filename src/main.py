@@ -7,13 +7,13 @@ from bank_accounts.trade_republic.portfolio_visualizer import PortfolioVisualize
 from bank_accounts.trade_republic.trade_republic_importer import (
     TradeRepublicImporter,
 )
-from database.compte_titre import CompteTireBdd
+from database.bnp_paribas_database import BnpParibasDatabase
 
 
 def compte_upgrade(db_path: str, save_file_path: str, initial_dir: str, two_last_years: bool):
     data = select_and_extract_data(initial_dir)
     if data is not None:
-        bdd = CompteTireBdd(db_path)
+        bdd = BnpParibasDatabase(db_path)
         bdd.add_raw_data(data)
  
     operation_categoriser = OperationCategorizer(db_path)
@@ -24,7 +24,7 @@ def compte_upgrade(db_path: str, save_file_path: str, initial_dir: str, two_last
     excel_report_generator.generate_all_reports(two_last_years)
 
 def bnp_paribas_all_compte(db_path: str, source_db_path: str, target_db_path: str, save_file_path: str, two_last_years: bool):
-    CompteTireBdd.merge_bank_databases(source_db_path, target_db_path, db_path)
+    BnpParibasDatabase.merge_bank_databases(source_db_path, target_db_path, db_path)
     graphique_financier = GraphiqueFinancier(db_path, save_file_path)
     graphique_financier.generate_all_reports(two_last_years)
     excel_report_generator = ExcelReportGenerator(db_path, save_file_path)

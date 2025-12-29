@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 
-class Bdd:
+class BaseDatabase:
     """
     Fournit une interface de base pour interagir avec une base de données SQLite.
     

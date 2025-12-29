@@ -6,13 +6,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
-from database.compte_titre import CompteTireBdd
+from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class GraphiqueFinancier(CompteTireBdd):
+class GraphiqueFinancier(BnpParibasDatabase):
     """
     Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire. 
-    Elle hérite de `CompteTireBdd` et fournit des méthodes pour :
+    Elle hérite de `BnpParibasDatabase` et fournit des méthodes pour :
 
     - Créer des dossiers annuels pour organiser les graphiques.
     - Générer des graphiques Sankey, en barres empilées et circulaires (sunburst) pour visualiser 
