@@ -1,10 +1,10 @@
-from comptes_bancaires.bnp_paribas.data_extractor import select_and_extract_data
-from comptes_bancaires.bnp_paribas.excel_report_generator import ExcelReportGenerator
-from comptes_bancaires.bnp_paribas.financial_chart import GraphiqueFinancier
-from comptes_bancaires.bnp_paribas.operation_categorizer import OperationCategorizer
-from comptes_bancaires.trade_republic.portfolio_performance import PortfolioPerformance
-from comptes_bancaires.trade_republic.portfolio_visualizer import PortfolioVisualizer
-from comptes_bancaires.trade_republic.trade_republic_importer import (
+from bank_accounts.bnp_paribas.data_extractor import select_and_extract_data
+from bank_accounts.bnp_paribas.excel_report_generator import ExcelReportGenerator
+from bank_accounts.bnp_paribas.financial_chart import GraphiqueFinancier
+from bank_accounts.bnp_paribas.operation_categorizer import OperationCategorizer
+from bank_accounts.trade_republic.portfolio_performance import PortfolioPerformance
+from bank_accounts.trade_republic.portfolio_visualizer import PortfolioVisualizer
+from bank_accounts.trade_republic.trade_republic_importer import (
     TradeRepublicImporter,
 )
 from database.compte_titre import CompteTireBdd

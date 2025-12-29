@@ -6,7 +6,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-from comptes_bancaires.bnp_paribas.report_data_handler import ReportDataHandler
+from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
 from database.compte_titre import CompteTireBdd
 
 

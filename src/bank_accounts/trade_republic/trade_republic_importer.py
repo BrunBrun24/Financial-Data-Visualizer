@@ -6,7 +6,7 @@ from difflib import SequenceMatcher
 
 import pandas as pd
 
-from comptes_bancaires.trade_republic.execution_date_validator import (
+from bank_accounts.trade_republic.execution_date_validator import (
     ExecutionDateValidator,
 )
 from database.trade_republic_database import TradeRepublicDatabase

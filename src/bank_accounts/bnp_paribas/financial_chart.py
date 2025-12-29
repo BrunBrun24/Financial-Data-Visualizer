@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from comptes_bancaires.bnp_paribas.report_data_handler import ReportDataHandler
+from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
 from database.compte_titre import CompteTireBdd
 
 

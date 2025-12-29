@@ -1,6 +1,6 @@
 import pandas as pd
 
-from comptes_bancaires.trade_republic.portfolio_engine import PortfolioEngine
+from bank_accounts.trade_republic.portfolio_engine import PortfolioEngine
 from database.trade_republic_database import TradeRepublicDatabase
 
 
