@@ -1,4 +1,4 @@
-from bank_accounts.bnp_paribas.data_extractor import select_and_extract_data
+from bank_accounts.bnp_paribas.data_extractor import ExcelDataExtractor
 from bank_accounts.bnp_paribas.excel_report_generator import ExcelReportGenerator
 from bank_accounts.bnp_paribas.financial_chart import GraphiqueFinancier
 from bank_accounts.bnp_paribas.operation_categorizer import OperationCategorizer
@@ -12,7 +12,8 @@ from wealth_management.wealth_dashboard import WealthDashboard
 
 
 def compte_upgrade(db_path: str, save_file_path: str, initial_dir: str, two_last_years: bool):
-    data = select_and_extract_data(initial_dir)
+    excel_data_extractor = ExcelDataExtractor(initial_dir)
+    data = excel_data_extractor.run_extraction()
     if data is not None:
         bdd = BnpParibasDatabase(db_path)
         bdd.add_raw_data(data)

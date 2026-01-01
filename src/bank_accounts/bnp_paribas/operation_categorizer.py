@@ -262,66 +262,71 @@ class OperationCategorizer(BnpParibasDatabase):
 		- bool : True si l'opération nécessite une catégorisation manuelle (afficher les boutons),
 		         False si l'opération a été catégorisée automatiquement (ne pas afficher les boutons).
         """
-        montant = row[5]
-        libelle_court = row[2]
-        libelle_operation = row[4]
+        amount = row[5]
+        short_label = row[2]
+        full_label = row[4]
         
         # Liste des restaurants
         restaurants = ["BURGER KING", "KFC", "MC DO", "O TACOS", "OTACOS", "IZLY SMONEY"]
 
         # --- Revenus ---
-        if libelle_court == "REMISE CHEQUES":
+        if short_label == "REMISE CHEQUES":
             category = "Revenus"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Chèques reçus"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Chèques reçus"])
             return False
 
-        elif (libelle_operation in ["DE AUBRUN /MOTIF VIREMENT PAUL", "VIREMENT INSTANTANE RECU"]) or (libelle_court == "VIREMENT INSTANTANE RECU"):
+        elif (full_label in ["DE AUBRUN /MOTIF VIREMENT PAUL", "VIREMENT INSTANTANE RECU"]) or (short_label == "VIREMENT INSTANTANE RECU"):
             category = "Revenus"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
             return False
 
-        elif bool(re.match(r'^DE AUBRUN PAUL EMIL', libelle_operation)) or bool(re.match(r'^DE MR PAUL AUBRUN', libelle_operation)):
+        elif bool(re.match(r'^DE AUBRUN PAUL EMIL', full_label)) or bool(re.match(r'^DE MR PAUL AUBRUN', full_label)):
             category = "Revenus"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Virements internes"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements internes"])
             return False
 
-        elif libelle_court == "VIREMENT PERMANENT":
+        elif short_label == "VIREMENT PERMANENT":
             category = "Revenus"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
             return False
 
-        elif libelle_operation == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL":
+        elif full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL":
             category = "Revenus"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+            return False
+
+        elif full_label == "REMUNERATION NETTE":
+            category = "Revenus"
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Intérêts"])
             return False
 
         # --- Banque ---
-        elif libelle_court == "COMMISSIONS":
+        elif short_label == "COMMISSIONS":
             category = "Banque"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Frais bancaires"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Frais bancaires"])
             return False
 
         # --- Investissement ---
-        elif bool(re.match(r'^TRADE REPUBLIC', libelle_operation)) and montant < 0:
+        elif bool(re.match(r'^TRADE REPUBLIC', full_label)) and amount < 0:
             category = "Investissement"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["CTO"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["CTO"])
             return False
 
-        elif libelle_court == "VIREMENT INTERNE" and montant < 0:
+        elif short_label == "VIREMENT INTERNE" and amount < 0:
             category = "Épargne"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Livret A"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Livret A"])
             return False
 
         # --- Loisirs ---
-        elif any(rest in libelle_operation for rest in restaurants):
+        elif any(rest in full_label for rest in restaurants):
             category = "Loisirs et sorties"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Restaurants - Fast food"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Restaurants - Fast food"])
             return False
 
         # --- Transports ---
-        elif any(station in libelle_operation for station in ["STATION U"]):
+        elif any(station in full_label for station in ["STATION U"]):
             category = "Transports et véhicules"
-            self._get_categorized_operations_df(row, self.__category_ids[category], self.subcategory_ids[category]["Carburant"])
+            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Carburant"])
             return False
 
         return True
@@ -339,7 +344,7 @@ class OperationCategorizer(BnpParibasDatabase):
 		- Passe à l'opération suivante dans la liste
         """
         # Sauvegarde
-        self._get_categorized_operations_df(
+        self._save_categorized_transaction(
             self.current_row,
             self.__category_ids[parent_button_name],
             self.subcategory_ids[parent_button_name][sub_button_name]

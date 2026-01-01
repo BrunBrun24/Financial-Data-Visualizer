@@ -404,6 +404,14 @@ class TradeRepublicImporter(TradeRepublicDatabase):
             # --- [ Extraction des Dates ] ---
             pay_date = self.__parse_date(self.__regex_extract(text, r'DE\d{20}\s(\d{2}[./]\d{2}[./]\d{4})', 1))
 
+            # --- [ Extraction de la Quantité ] ---
+            # Regex gérant le point ou la virgule, suivi de "unit." ou "titre(s)"
+            qty_match = re.search(r'([\d,.]+)\s+(?:unit\.|titre\(s\))', text)
+            quantity = 0.0
+            if qty_match:
+                # On remplace la virgule par un point pour le cast en float
+                quantity = float(qty_match.group(1).replace(',', '.'))
+
             # --- [ Analyse du Taux de Change ] ---
             # On capture la valeur et l'unité (ex: 1.1715 et USD/EUR)
             fx_match = re.search(r'([\d,.]+)\s+(EUR/USD|USD/EUR)', text)
@@ -448,7 +456,7 @@ class TradeRepublicImporter(TradeRepublicDatabase):
                 'amount': gross_in_eur,
                 'fees': max(0.0, tax_value),
                 'stock_price': None,
-                'quantity': None
+                'quantity': quantity
             })
 
         return pd.DataFrame(records)

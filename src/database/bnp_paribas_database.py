@@ -69,6 +69,7 @@ class BnpParibasDatabase(BaseDatabase):
             'Voyages & week-ends', 'Loisirs & activités', 'Abonnements partagés'
         ],
         'Parents': ['Aides'],
+        'Scolarité': ['Frais de scolarité', 'Alimentation'],
     }
 
     def __init__(self, db_path: str):
@@ -91,7 +92,11 @@ class BnpParibasDatabase(BaseDatabase):
     # --- [ Méthodes principales pour manipuler les opérations et fusionner les bases ] ---
     def add_raw_data(self, df: pd.DataFrame):
         """
-        Ajoute des lignes dans la table `raw_data` en évitant les doublons.
+        Ajoute des lignes dans la table `raw_data` en gérant les doublons légitimes.
+        
+        Si une opération identique apparaît plusieurs fois dans le DataFrame, on vérifie
+        si le même nombre d'occurrences existe en base. On n'insère que les exemplaires
+        manquants.
 
         Args:
             df (pd.DataFrame): Données à ajouter (colonnes : date_operation, 
@@ -106,24 +111,41 @@ class BnpParibasDatabase(BaseDatabase):
             if working_df[column].dtype == "datetime64[ns]":
                 working_df[column] = working_df[column].dt.strftime("%Y-%m-%d")
 
-        working_df = working_df.drop_duplicates()
+        # Identification et comptage des occurrences dans le DataFrame fourni
+        # On groupe par toutes les colonnes de données pour compter les doublons
+        colonnes_cles = ['operation_date', 'short_label', 'operation_type', 'full_label', 'amount']
+        # S'assurer que les colonnes du DF correspondent aux noms attendus pour le groupby
+        working_df.columns = colonnes_cles
+        df_counts = working_df.groupby(colonnes_cles, dropna=False).size().reset_index(name='nb_occurrences_df')
+
         rows_to_insert = []
 
-        # Requête de vérification sur les colonnes anglaises
-        check_sql = """
-            SELECT processed FROM raw_data 
-            WHERE operation_date = ?
-            AND short_label = ?
-            AND operation_type = ?
-            AND full_label = ?
-            AND amount = ?
+        # Requête de comptage en base de données
+        # Utilisation de IS pour gérer correctement les valeurs NULL (nan)
+        count_sql = """
+            SELECT COUNT(*) FROM raw_data 
+            WHERE operation_date IS ?
+            AND short_label IS ?
+            AND operation_type IS ?
+            AND full_label IS ?
+            AND amount IS ?
         """
 
-        for row in working_df.itertuples(index=False):
+        for row in df_counts.itertuples(index=False):
+            # Préparation des paramètres pour la requête SQL (les 5 premières colonnes)
             params = (row[0], row[1], row[2], row[3], row[4])
-            cursor.execute(check_sql, params)
-            if cursor.fetchone() is None:
-                rows_to_insert.append(params)
+            nb_dans_df = row.nb_occurrences_df
+
+            # On compte combien de fois cette opération exacte existe déjà en BDD
+            cursor.execute(count_sql, params)
+            nb_dans_bdd = cursor.fetchone()[0]
+
+            # Si le fichier contient plus d'occurrences que la BDD, on ajoute la différence
+            nb_a_ajouter = nb_dans_df - nb_dans_bdd
+            
+            if nb_a_ajouter > 0:
+                for _ in range(nb_a_ajouter):
+                    rows_to_insert.append(params)
 
         if rows_to_insert:
             insert_sql = """
@@ -135,7 +157,7 @@ class BnpParibasDatabase(BaseDatabase):
 
         connection.commit()
         connection.close()
-
+        
     def merge_bank_databases(source_db_path: str, target_db_path: str, output_path: str):
         """
         Fusionne deux bases de données bancaires en préservant l'intégrité référentielle.
@@ -372,11 +394,11 @@ class BnpParibasDatabase(BaseDatabase):
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS raw_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                operation_date TEXT,
+                operation_date TEXT NOT NULL,
                 short_label TEXT,
                 operation_type TEXT,
-                full_label TEXT,
-                amount REAL,
+                full_label TEXT NOT NULL,
+                amount REAL NOT NULL,
                 processed INTEGER DEFAULT 0
             );
         """)

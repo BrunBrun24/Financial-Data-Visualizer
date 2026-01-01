@@ -148,7 +148,7 @@ class TradeRepublicDatabase(BaseDatabase):
                     date TEXT NOT NULL,
                     ticker TEXT NOT NULL,
                     metric_type TEXT NOT NULL,
-                    value REAL NOT NULL,
+                    value REAL,
                     portfolio_name TEXT NOT NULL,
                     UNIQUE(date, ticker, metric_type, portfolio_name)
                 );
