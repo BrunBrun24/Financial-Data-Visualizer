@@ -1,3 +1,4 @@
+import html
 import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox
@@ -41,8 +42,11 @@ class ExcelDataExtractor:
             extension = f".{file_path.lower().split('.')[-1]}"
             if extension in [".xls", ".xlsx"]:
                 df_temp = self._extract_file_data(file_path, extension)
-                if df_temp is not None:
-                    all_dfs.append(df_temp)
+            elif extension == ".csv":
+                df_temp = self._extract_csv_data(file_path)
+
+            if df_temp is not None:
+                all_dfs.append(df_temp)
 
         if all_dfs:
             return pd.concat(all_dfs, ignore_index=True)
@@ -67,7 +71,7 @@ class ExcelDataExtractor:
             paths = filedialog.askopenfilenames(
                 title="Choisir un ou plusieurs fichiers",
                 initialdir=self._initial_dir,
-                filetypes=[("Fichiers Excel", "*.xls *.xlsx"), ("Tous les fichiers", "*.*")]
+                filetypes=[("Fichiers Excel", "*.xls *.xlsx *.csv"), ("Tous les fichiers", "*.*")]
             )
             if paths:
                 self.__file_paths = list(paths)
@@ -134,6 +138,55 @@ class ExcelDataExtractor:
 
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur sur le fichier {file_path} : {str(e)}")
+            return None
+
+    def _extract_csv_data(self, file_path: str) -> (pd.DataFrame | None):
+        """
+        Extrait les données brutes d'un fichier csv.
+        
+        Args:
+            - file_path (str) : Chemin du fichier.
+            - extension (str) : Extension détectée.
+            
+        Returns:
+            - pd.DataFrame : DataFrame formaté ou None en cas d'erreur.
+        """
+        try:
+            # Lecture avec gestion du séparateur et de la virgule décimale
+            df = pd.read_csv(
+                file_path, 
+                sep=';', 
+                encoding='utf-8', 
+                header=None, 
+                on_bad_lines='skip',
+                decimal=','
+            )
+
+            # Nettoyage HTML (Nouvelle syntaxe .map)
+            df = df.map(lambda x: html.unescape(str(x)) if isinstance(x, str) else x)
+
+            # Filtrage des lignes de transactions uniquement
+            df = df[df[0].str.contains(r'\d{2}/\d{2}/\d{4}', na=False)].copy()
+
+            df = df.iloc[:, 0:5]
+            df.columns = ["date_operation", "libelle_court", "type_operation", "libelle_operation", "montant"]
+
+            # Conversion forcée en numérique pour éviter les NULL
+            df["montant"] = pd.to_numeric(df["montant"], errors='coerce')
+            
+            # Suppression des lignes où le montant n'a pas pu être converti (évite l'IntegrityError)
+            df = df.dropna(subset=["montant"])
+
+            # Conversion de la date
+            df["date_operation"] = pd.to_datetime(df["date_operation"], dayfirst=True)
+
+            # Application des règles métier
+            self._apply_business_rules(df)
+            
+            return df
+
+        except Exception as e:
+            messagebox.showerror("Erreur CSV", f"Erreur sur le fichier {file_path} : {str(e)}")
             return None
 
     def _apply_business_rules(self, df: pd.DataFrame) -> pd.DataFrame:
