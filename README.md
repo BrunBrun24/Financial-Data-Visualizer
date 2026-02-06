@@ -1,43 +1,44 @@
-# Projet de Gestion et d'Analyse Financière
+# Financial Data Visualizer
 
-Ce projet contient plusieurs classes Python conçues pour faciliter la gestion, l'analyse, et la visualisation des données financières. Les fonctionnalités incluent la génération de rapports Excel, la création de graphiques financiers interactifs, l'extraction et la manipulation de données, ainsi que la catégorisation des opérations financières.
+![Status](https://img.shields.io/badge/License-All%20Rights%20Reserved-red)
+![Language](https://img.shields.io/badge/Language-Python-blue)
 
-## Ce qui reste à faire
+## ⚠️ Propriété Intellectuelle / Intellectual Property
 
-### 1. `Graphique Plotly`
+**Copyright (c) 2026 BrunBrun. All rights reserved.**
 
-**Problèmes**
-*Bourse*
-Lorsque l'on calcule les dataFrame pour la réplication de mon portefeuille il y a un problème pour les prixFIFO
+Ce projet est publié uniquement à des fins de démonstration de compétences (portfolio). 
+**Toute copie, modification ou utilisation commerciale est strictement interdite.** Veuillez vous référer au fichier [LICENSE](./LICENSE) pour plus de détails.
 
+---
 
-**Changement**
-*Bourse*
-Modifier l'affichage des graphiques en bourse
+## 📝 Description
 
-*Patrimoine*
-Revoir les graphiques du patrimoine
+**Financial Data Visualizer** est une application conçue pour transformer des données brutes en insights clairs. Elle permet aux utilisateurs de suivre leur santé financière à travers une interface intuitive et des rapports automatisés.
 
-*Interface*
-Améliorer l'interface ainsi que la visualisation
+L'application traite des fichiers Excel sources pour catégoriser les transactions et générer des visualisations graphiques avancées.
 
+## 🚀 Fonctionnalités
 
-**Objectif Final**
-- Faire une interface graphique avec plusieurs options permettant de choisir ce que l'on veut faire.
-   - Choisir de mettre à jour les données sur la bourse
-   - Choisir de catégoriser les nouvelles dépenses
-   - Choisir les graphiques que l'on veut visualiser  => Bourse => Progression du portefeuille en pourcentage
-                                                               => Progression du portefeuille en euro
-                                                               => Répartition portefeuille
-                                                      => Banque => Livret A
-                                                                => Compte Courant
+* **Importation Excel :** Lecture et traitement de fichiers de données financières.
+* **Catégorisation Automatique :** Organisation des flux financiers par types de dépenses/revenus.
+* **Visualisation Graphique :** Génération de graphiques dynamiques pour une analyse rapide.
+* **Rapports Financiers :** Exportation de synthèses détaillées.
+* **Mode Exécutable :** Utilisation simplifiée via un fichier `.exe` avec un menu interactif.
 
+## 🛠️ Utilisation
 
-## Utilisation
+Une fois l'exécutable lancé, l'utilisateur a deux options principales :
 
-Pour utiliser ces classes dans ton projet, suis les instructions ci-dessous :
+1.  **Ajouter des données :** Importer de nouvelles informations financières via un fichier Excel pré-formaté.
+2.  **Visualiser les données :** Consulter les graphiques et les rapports basés sur les données déjà enregistrées.
 
-1. **Installation des Dépendances:**
-   Assure-toi que les bibliothèques nécessaires sont installées. Tu peux les installer avec pip :
-   ```bash
-   pip install pandas openpyxl plotly
+## 💻 Standard de Développement
+
+Ce projet respecte un standard de développement rigoureux :
+* **Nomenclature :** Code entièrement rédigé en anglais (variables, classes, méthodes).
+* **Documentation :** Docstrings complets et commentaires internes rédigés en **Français**.
+* **Architecture :** Code modulaire respectant les principes **SOLID** et **DRY**.
+* **Encapsulation :** Respect strict de la visibilité des méthodes (Public, Protected, Private).
+
+---
