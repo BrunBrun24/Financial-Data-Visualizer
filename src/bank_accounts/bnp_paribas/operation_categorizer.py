@@ -1,5 +1,6 @@
 import re
 import tkinter as tk
+import unicodedata
 
 from database.bnp_paribas_database import BnpParibasDatabase
 
@@ -32,15 +33,14 @@ class OperationCategorizer(BnpParibasDatabase):
         super().__init__(db_path)
         
         self.__buttons_per_row = buttons_per_row
-        self.__category = self._get_categories_hierarchy()
         self.__operations = self._get_unprocessed_raw_operations()
-        self.__category_ids, self.subcategory_ids = self._get_category_mappings()
+        self.__history = []  # Pile pour stocker les opérations précédemment traitées
         
         self.__root = tk.Tk()
         self.__window_width = 800
         self.__window_height = 600
         self.__display_label = tk.Label(self.__root, text="", wraplength=self.__window_width - 50)
-        self.__display_label.grid(row=(len(self.__category) // self.__buttons_per_row) + 1, column=0, columnspan=self.__buttons_per_row, pady=20)
+        self.__display_label.grid(row=(len(self._categories_labels) // self.__buttons_per_row) + 1, column=0, columnspan=self.__buttons_per_row, pady=20)
     
     
     # --- [ Gestion de l'Interface ] ---
@@ -107,15 +107,16 @@ class OperationCategorizer(BnpParibasDatabase):
             text=row[4] + "\n\n" + f"{row[1]}   =>   {row[5]}€"
         )
 
-        # Détermine les catégories à afficher
+        # Filtrage et tri des catégories principales
         if row[5] >= 0:
-            filtered_buttons = {"Revenus": self.__category["Revenus"]}
+            filtered_buttons = {"Revenus": self._categories_labels["Revenus"]}
         else:
-            filtered_buttons = {
-                key: self.__category[key]
-                for key in sorted(self.__category.keys())
-                if key != "Revenus"
-            }
+            # Tri des catégories sans tenir compte des accents
+            sorted_keys = sorted(
+                [k for k in self._categories_labels.keys() if k != "Revenus"],
+                key=self.__normalize_text
+            )
+            filtered_buttons = {key: self._categories_labels[key] for key in sorted_keys}
 
         self.__create_buttons(filtered_buttons)
 
@@ -153,88 +154,103 @@ class OperationCategorizer(BnpParibasDatabase):
             )
             button.grid(row=row, column=column, padx=10, pady=10, sticky="ew")
 
+        # Calcul de la ligne pour les boutons de navigation (après les catégories)
+        navigation_row = (len(filtered_buttons) // self.__buttons_per_row) + 10
+
+        # Bouton "Annuler" (Affiché uniquement si un historique existe)
+        if self.__history:
+            undo_button = tk.Button(
+                self.__root,
+                text="Annuler",
+                command=self.__undo_last_action,
+                bg="#FFCDD2"
+            )
+            undo_button.grid(row=navigation_row, column=0, pady=10, sticky="ew")
+
         # Bouton "Suivant"
-        skip_button = tk.Button(self.__root, text="Suivant", command=self.__skip_entry)
-        skip_button.grid(
-            row=(len(filtered_buttons) // self.__buttons_per_row) + 10,
-            column=self.__buttons_per_row - 1,
-            pady=10,
-            sticky="ew"
+        skip_button = tk.Button(
+            self.__root, 
+            text="Suivant", 
+            command=self.__skip_entry,
+            bg="#CECDFF"
         )
+        skip_button.grid(row=navigation_row, column=self.__buttons_per_row - 1, pady=10, sticky="ew")
 
         # Ajustement automatique des colonnes
         for i in range(self.__buttons_per_row):
             self.__root.grid_columnconfigure(i, weight=1)
 
-    def __button_clicked(self, button_name: str):
+    def __button_clicked(self, category_name: str):
         """
-		Gère le clic sur une catégorie principale.
+        Gère le clic sur une catégorie principale et affiche ses sous-catégories.
 
-		Args:
-		- button_name (str) : nom de la catégorie cliquée
+        Si la catégorie possède des éléments enfants, l'interface est nettoyée 
+        pour afficher les boutons des sous-catégories triés par ordre alphabétique.
+        Sinon, l'opération est directement traitée.
 
-		Si la catégorie a des sous-catégories :
-			- affiche les sous-catégories
-			- ajoute un bouton "Retour" pour revenir aux catégories principales
-			- ajoute un bouton "Suivant" pour passer à l'opération suivante
-
-		Si la catégorie n'a pas de sous-catégories :
-			- catégorise directement l'opération en cours
+        Args:
+            - category_name (str) : Le nom de la catégorie sélectionnée par l'utilisateur.
         """
-        assert button_name in self.__category, f"{button_name} n'est pas une catégorie valide."
+        # Vérification de la validité de la catégorie
+        assert category_name in self._categories_labels, f"{category_name} n'est pas une catégorie valide."
 
-        sous_cats = self.__category[button_name]
+        sub_categories = self._categories_labels[category_name]
 
-        # Cas : il y a des sous-catégories
-        if isinstance(sous_cats, list) and sous_cats:
-            # Effacer les anciens boutons (mais garder le label)
+        # Cas où la catégorie contient des sous-catégories
+        if isinstance(sub_categories, list) and sub_categories:
+            # Nettoyage des anciens boutons (on conserve uniquement le label d'affichage)
             for widget in self.__root.winfo_children():
                 if widget != self.__display_label:
                     widget.destroy()
 
-            # Créer les boutons des sous-catégories
-            for i, sous_label in enumerate(sous_cats):
+            # Tri alphabétique insensible aux accents grâce à la méthode de normalisation
+            sorted_sub_categories = sorted(sub_categories, key=self.__normalize_text)
+
+            # Création dynamique de la grille de boutons pour les sous-catégories
+            for i, sub_label in enumerate(sorted_sub_categories):
+                row = i // self.__buttons_per_row
+                column = i % self.__buttons_per_row
+                
                 btn = tk.Button(
                     self.__root,
-                    text=sous_label,
-                    command=lambda s=sous_label, b=button_name: self.__sub_button_clicked(s, b)
+                    text=sub_label,
+                    command=lambda s=sub_label, c=category_name: self.__sub_button_clicked(s, c)
                 )
-                btn.grid(row=i // self.__buttons_per_row,
-                        column=i % self.__buttons_per_row,
-                        padx=10,
-                        pady=10,
-                        sticky="ew")
+                btn.grid(row=row, column=column, padx=10, pady=10, sticky="ew")
 
-            # Bouton Retour → revient aux catégories principales
-            retour_btn = tk.Button(
-                self.__root,
-                text="Retour",
+            # Calcul de la position de la ligne de navigation (placée après les boutons)
+            row_index = (len(sorted_sub_categories) // self.__buttons_per_row) + 10
+            
+            # Ajout des boutons de navigation : Retour et Suivant
+            back_button = tk.Button(
+                self.__root, 
+                text="Retour", 
                 command=self.__update_display
             )
-            retour_btn.grid(
-                row=(len(sous_cats) // self.__buttons_per_row) + 10,
-                column=0,
-                columnspan=self.__buttons_per_row - 2,
-                pady=10,
+            back_button.grid(
+                row=row_index, 
+                column=0, 
+                columnspan=self.__buttons_per_row - 2, 
+                pady=10, 
                 sticky="ew"
             )
 
-            # Bouton Suivant → passe à l’opération suivante
-            suivant_btn = tk.Button(
-                self.__root,
-                text="Suivant",
-                command=self.__skip_entry
+            next_button = tk.Button(
+                self.__root, 
+                text="Suivant", 
+                command=self.__skip_entry,
+                bg="#CECDFF"
             )
-            suivant_btn.grid(
-                row=(len(sous_cats) // self.__buttons_per_row) + 10,
-                column=self.__buttons_per_row - 1,
-                pady=10,
+            next_button.grid(
+                row=row_index, 
+                column=self.__buttons_per_row - 1, 
+                pady=10, 
                 sticky="ew"
             )
-
-        # Cas : pas de sous-catégories → catégorisation directe
+            
         else:
-            self.process_button(button_name)
+            # Si aucune sous-catégorie n'existe, on traite directement l'opération
+            raise ValueError(f"Erreur : Il n'y a pas de sous-catégories pour la catégorie '{category_name}'.")
 
     def __skip_entry(self):
         """
@@ -251,6 +267,33 @@ class OperationCategorizer(BnpParibasDatabase):
         # Mise à jour de l'affichage
         self.__update_display()
 
+    def __undo_last_action(self):
+        """
+        Annule la dernière catégorisation effectuée et recharge l'opération.
+
+        Actions :
+        - Récupère l'opération de la pile d'historique.
+        - Supprime l'entrée correspondante dans la base de données.
+        - Réinsère l'opération en début de file d'attente.
+        - Rafraîchit l'affichage.
+        """
+        if not self.__history:
+            # Aucun historique disponible, on ne fait rien
+            return
+
+        # Récupère la dernière opération traitée (LIFO)
+        last_operation = self.__history.pop()
+        
+        # Suppression en base de données via l'ID de la transaction (row[0])
+        # Note : nécessite la méthode _delete_categorized_transaction dans la classe parente
+        self._delete_categorized_transaction(last_operation[0])
+
+        # Réinsertion en première position de la liste de travail
+        self.__operations.insert(0, last_operation)
+
+        # Mise à jour de l'interface graphique
+        self.__update_display()
+
 
     # --- [ Logique de Catégorisation ] ---
     def __process_special_cases(self, row: list) -> bool:
@@ -265,75 +308,57 @@ class OperationCategorizer(BnpParibasDatabase):
         amount = row[5]
         short_label = row[2]
         full_label = row[4]
-        
-        # Liste des restaurants
-        restaurants = ["BURGER KING", "KFC", "MC DO", "O TACOS", "OTACOS", "IZLY SMONEY"]
 
         # --- Revenus ---
         if short_label == "REMISE CHEQUES":
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Chèques reçus"])
-            return False
-
-        elif (full_label in ["DE AUBRUN /MOTIF VIREMENT PAUL", "VIREMENT INSTANTANE RECU"]) or (short_label == "VIREMENT INSTANTANE RECU"):
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+            self._save_categorized_transaction(row, "Revenus", "Chèques reçus")
             return False
 
         elif bool(re.match(r'^DE AUBRUN PAUL EMIL', full_label)) or bool(re.match(r'^DE MR PAUL AUBRUN', full_label)):
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements internes"])
+            self._save_categorized_transaction(row, "Revenus", "Virements internes")
             return False
 
-        elif short_label == "VIREMENT PERMANENT":
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
-            return False
-
-        elif full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL":
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Virements reçus"])
+        elif (
+            short_label in ["VIREMENT PERMANENT", "VIREMENT INSTANTANE RECU"] or
+            full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL" or 
+            full_label in ["DE AUBRUN /MOTIF VIREMENT PAUL", "VIREMENT INSTANTANE RECU"]
+        ):
+            self._save_categorized_transaction(row, "Revenus", "Virements reçus")
             return False
 
         elif full_label == "REMUNERATION NETTE":
-            category = "Revenus"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Intérêts"])
+            self._save_categorized_transaction(row, "Revenus", "Intérêts")
+            return False
+
+        # --- Abonnement ---
+        elif full_label == "COMMISSIONS COTISATION A UNE OFFRE GROUPEE DE SERVICES ESPRIT LIBRE":
+            self._save_categorized_transaction(row, "Abonnement", "Assurance Bancaire")
             return False
 
         # --- Banque ---
-        elif short_label == "COMMISSIONS":
-            category = "Banque"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Frais bancaires"])
+        elif bool(re.match(r'^COMMISSIONS COTISATION ANNUELLE VISUEL PERSONNALISE CARTE CARTE N', full_label)):
+            self._save_categorized_transaction(row, "Banque", "Frais de carte")
             return False
 
         # --- Investissement ---
         elif bool(re.match(r'^TRADE REPUBLIC', full_label)) and amount < 0:
-            category = "Investissement"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["CTO"])
+            self._save_categorized_transaction(row, "Investissement", "CTO")
             return False
 
         elif short_label == "VIREMENT INTERNE" and amount < 0:
-            category = "Épargne"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Livret A"])
-            return False
-
-        # --- Loisirs ---
-        elif any(rest in full_label for rest in restaurants):
-            category = "Loisirs et sorties"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Restaurants - Fast food"])
+            self._save_categorized_transaction(row, "Épargne", "Livret A")
             return False
 
         # --- Transports ---
         elif any(station in full_label for station in ["STATION U"]):
-            category = "Transports et véhicules"
-            self._save_categorized_transaction(row, self.__category_ids[category], self.subcategory_ids[category]["Carburant"])
+            self._save_categorized_transaction(row, "Transports et véhicules", "Carburant")
             return False
 
         return True
 
     def __sub_button_clicked(self, sub_button_name: str, parent_button_name: str):
         """
-		Gère le clic sur un bouton de sous-catégorie.
+		Gère le clic sur une sous-catégorie et archive l'opération.
 
 		Args:
 		- sub_button_name (str) : nom de la sous-catégorie cliquée
@@ -343,13 +368,28 @@ class OperationCategorizer(BnpParibasDatabase):
 		- Enregistre l'opération courante avec la catégorie et sous-catégorie sélectionnées
 		- Passe à l'opération suivante dans la liste
         """
-        # Sauvegarde
-        self._save_categorized_transaction(
-            self.current_row,
-            self.__category_ids[parent_button_name],
-            self.subcategory_ids[parent_button_name][sub_button_name]
-        )
+        # Archivage de l'opération courante avant traitement
+        self.__history.append(self.current_row)
 
-        # Passe à l'opération suivante
+        # Conversion des noms des boutons en IDs techniques
+        self._save_categorized_transaction(self.current_row, parent_button_name, sub_button_name)
+
+        # Passage à l'élément suivant
         self.__operations.pop(0)
         self.__update_display()
+
+
+    # --- [ Utilitaires de Formatage ] ---
+    def __normalize_text(self, text: str) -> str:
+        """
+        Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules.
+        
+        Utile pour le tri alphabétique correct (ex: 'Épargne' traité comme 'epargne').
+
+        Args:
+            - text (str) : La chaîne à normaliser.
+        Returns:
+            - str : La chaîne normalisée.
+        """
+        normalized = unicodedata.normalize('NFD', text)
+        return "".join(c for c in normalized if unicodedata.category(c) != 'Mn').lower()
