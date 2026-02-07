@@ -404,24 +404,32 @@ class WealthDashboard:
         Returns:
             - dict : Dictionnaire de pd.Series indexées par date.
         """
-        # Extraction brute des données
-        df_c = self.__bnp_checking_db._get_table_data('categorized_operations').rename(columns={'operation_date': 'date'})
-        df_s = self.__bnp_livret_a_db._get_table_data('categorized_operations').rename(columns={'operation_date': 'date'})
-        df_tr = self.__trade_republic_db._get_performance_data('Mes Portefeuilles', 'Mes Portefeuilles', 'portfolio_valuation').rename(columns={'value': 'amount'})
+        # On récupère les DataFrames (qui contiennent déjà operation_date en datetime)
+        df_c = self.__bnp_checking_db._get_table_data('categorized_operations')
+        df_s = self.__bnp_livret_a_db._get_table_data('categorized_operations')
+        
+        # Pour Trade Republic, on garde ta logique spécifique
+        df_tr = self.__trade_republic_db._get_performance_data(
+            'Mes Portefeuilles', 'Mes Portefeuilles', 'portfolio_valuation'
+        ).rename(columns={'value': 'amount', 'operation_date': 'date'})
 
+        # Uniformisation des noms de colonnes pour la date
+        df_c = df_c.rename(columns={'operation_date': 'date'})
+        df_s = df_s.rename(columns={'operation_date': 'date'})
+        
         # Conversion des dates
         for df in [df_c, df_s, df_tr]:
             df['date'] = pd.to_datetime(df['date'])
 
-        # Création de la plage temporelle complète (journalière)
+        # Création de la plage temporelle
         all_dates = pd.concat([df_c['date'], df_s['date'], df_tr['date']])
         full_range = pd.date_range(start=all_dates.min(), end=all_dates.max(), freq='D')
 
-        # Normalisation par sommation cumulée pour les comptes bancaires
+        # Sommation cumulée
         checking = df_c.groupby('date')['amount'].sum().reindex(full_range, fill_value=0).cumsum()
         livret_a = df_s.groupby('date')['amount'].sum().reindex(full_range, fill_value=0).cumsum()
         
-        # Propagation de la dernière valeur connue pour Trade Republic
+        # Propagation Trade Republic
         tr_raw = df_tr.groupby('date')['amount'].sum().reindex(full_range)
         trade_republic = tr_raw.ffill().fillna(0)
 
@@ -434,13 +442,13 @@ class WealthDashboard:
         Returns:
             - float : Montant moyen des dépenses mensuelles.
         """
-        # Fusion des sources de dépenses
+        # Fusion des sources
         df_checking = self.__bnp_checking_db._get_table_data('categorized_operations')
         df_livret_a = self.__bnp_livret_a_db._get_table_data('categorized_operations')
         df_all = pd.concat([df_checking, df_livret_a], ignore_index=True)
-        df_cats = self.__bnp_checking_db._get_table_data('categories')
         
-        df_all["operation_date"] = pd.to_datetime(df_all["operation_date"])
+        # Conversion des dates
+        df_all['operation_date'] = pd.to_datetime(df_all['operation_date'])
         
         # Filtrage sur les 12 derniers mois
         last_date = df_all["operation_date"].max()
@@ -449,12 +457,11 @@ class WealthDashboard:
 
         # Exclusion des transferts vers l'épargne/investissement
         exclude_names = ["Épargne", "Investissement"]
-        excluded_ids = df_cats[df_cats['name'].isin(exclude_names)]['id'].tolist()
         
-        # Filtrage des dépenses réelles (montants négatifs)
+        # Filtrage des dépenses réelles
         df_expenses = df_all[
             (df_all['amount'] < 0) & 
-            (~df_all['category_id'].isin(excluded_ids))
+            (~df_all['category_name'].isin(exclude_names))
         ].copy()
         
         # Agrégation mensuelle
