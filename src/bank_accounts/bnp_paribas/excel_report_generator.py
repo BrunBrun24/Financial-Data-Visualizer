@@ -1,394 +1,276 @@
-from datetime import datetime
+import os
 
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.worksheet.table import Table, TableStyleInfo
+import xlsxwriter
 
-from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
 from database.bnp_paribas_database import BnpParibasDatabase
 
 
 class ExcelReportGenerator(BnpParibasDatabase):
     """
-    La classe `ExcelReportGenerator` hérite de `BnpParibasDatabase` et fournit des outils pour générer des rapports Excel
-    à partir des opérations financières catégorisées. Elle permet de :
-
-    - Créer des dossiers annuels pour stocker les rapports.
-    - Filtrer les opérations par revenus et dépenses.
-    - Générer des bilans par catégorie et sous-catégorie pour chaque année.
-    - Calculer les totaux et pourcentages pour chaque mois et catégorie.
-    - Formater automatiquement les fichiers Excel avec styles, bordures et formats monétaires.
+    Générateur de rapports financiers annuels au format Excel.
+    
+    Cette classe orchestre l'extraction des données bancaires et leur transformation 
+    en un tableau de bord budgétaire structuré. Elle gère notamment :
+    - La classification dynamique entre Recettes et Dépenses.
+    - Le tri automatique des catégories par importance financière (décroissant).
+    - Une mise en page comptable avancée (alternance de couleurs, colonnes de 
+      séparation, fusion de cellules).
+    - Le calcul automatisé des totaux annuels, de la trésorerie nette et des 
+      ratios de répartition en pourcentage.
     """
 
     def __init__(self, db_path: str, root_path: str):
         """
-        Initialise le générateur et prépare l'arborescence des dossiers.
-
-        Args:
-            - db_path (str) : Chemin vers la base de données SQLite.
-            - root_path (str) : Dossier racine pour le stockage des rapports.
+        Initialise le générateur.
         """
         super().__init__(db_path)
-        self.__root_path = root_path
-        
-        ReportDataHandler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
+        self.__root_path = os.path.abspath(root_path)
+        self.months = ["JAN", "FÉV", "MAR", "AVR", "MAI", "JUIN", 
+                       "JUIL", "AOÛ", "SEPT", "OCT", "NOV", "DÉC", 
+                       "", "ANNÉE", "RÉPARTITION"]
 
-
-    # --- [ Flux Principal ] ---
-    def generate_all_reports(self, two_last_year_only: bool):
+    # --- [ Configuration des Styles ] ---
+    def __get_excel_formats(self, wb):
         """
-        Génère les bilans financiers annuels pour toutes les années présentes dans les opérations catégorisées,
-        crée un fichier Excel pour chaque année et y ajoute les feuilles de bilan.
-
-        Arguments :
-        - two_last_year_only (bool) : si True, génère les bilans pour les deux dernières années.
+        Définit les formats visuels du document.
         """
-        years_operations_categorisees = self._get_categorized_operations_by_year()
-
-        # Créez les graphiques uniquement pour les 2 dernières années
-        if two_last_year_only:
-            two_last_years = list(years_operations_categorisees.keys())[-2:]
-            years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
-
-        # Regroupe toutes les opérations pour faire le bilan des différentes années
-        all_operation_categorisees = pd.DataFrame()
-
-        for year, operation_categorisees in years_operations_categorisees.items():
-            self.__output_file = f"{self.__root_path}{year}/Bilan {year}.xlsx"
-            self.__wb = self.__create_excel_file(operation_categorisees)
-            self.__add_to_excel_file(operation_categorisees)
-            all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
+        border_thin = {'border': 1, 'border_color': '#D3D3D3'}
+        return {
+            'title': wb.add_format({'font_name': 'Arial', 'font_size': 24, 'bold': True, 'align': 'center', 'valign': 'vcenter'}),
+            'year_tag': wb.add_format({'bg_color': '#1f77b4', 'font_color': 'white', 'bold': True, 'align': 'center', 'border': 2}),
+            'header_month': wb.add_format({'font_color': '#7f7f7f', 'align': 'right', 'font_size': 10, 'bottom': 2}),
+            'main_cat': wb.add_format({'font_color': '#1f77b4', 'bold': True, 'font_size': 12, 'top': 2, 'top_color': '#1f77b4', 'bottom': 1, 'bottom_color': '#1f77b4'}),
+            'sub_cat': wb.add_format({'font_color': '#1f77b4', 'bold': True, 'font_size': 10, 'bottom': 1}),
+            'item_label': wb.add_format({'font_color': '#333333', 'font_size': 10, **border_thin}),
+            'currency': wb.add_format({'num_format': '#,##0.00 €', 'font_size': 10, **border_thin}),
+            'currency_blue': wb.add_format({'num_format': '#,##0.00 €', 'bg_color': '#cceeff', 'font_size': 10, **border_thin}),
             
-        # Bilan de toutes les années
-        annees = list(years_operations_categorisees.keys())
-        self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.xlsx"
-        self.__wb = self.__create_excel_file(all_operation_categorisees)
-        self.__add_to_excel_file(all_operation_categorisees)
-
-
-    # --- [ Formatage Excel ] ---
-    def __create_excel_file(self, df: pd.DataFrame) -> load_workbook:
-        """
-        Crée un fichier Excel à partir d'un DataFrame unique.
-        
-        Args:
-            df (pd.DataFrame): Le DataFrame à sauvegarder.
-            sheet_name (str): Le nom de la feuille Excel.
+            # Style pour la colonne ANNÉE
+            'total_column': wb.add_format({'num_format': '#,##0.00 €', 'font_size': 10, 'bg_color': '#F9F9F9', **border_thin}),
             
-        Returns:
-            Workbook: le fichier Excel ouvert avec openpyxl.
+            # Styles Pourcentages
+            'percent_style': wb.add_format({'num_format': '0.00%', 'font_size': 10, 'align': 'center', 'font_color': '#1f77b4', 'bg_color': '#F9F9F9', 'italic': True, **border_thin}),
+            'percent_bold': wb.add_format({'num_format': '0.00%', 'font_size': 10, 'align': 'center', 'font_color': '#1f77b4', 'bg_color': '#F9F9F9', 'bold': True, 'italic': True, 'top': 1, 'bottom': 2}),
+            
+            'total_label': wb.add_format({'font_color': '#1f77b4', 'bold': True, 'bg_color': '#f2f2f2', 'top': 1, 'bottom': 2}),
+            'total_val': wb.add_format({'num_format': '#,##0.00 €', 'bold': True, 'bg_color': '#f2f2f2', 'top': 1, 'bottom': 2}),
+            
+            # Footer
+            'footer_label': wb.add_format({'bg_color': '#f2f2f2', 'font_color': 'black', 'bold': True}),
+            'footer_val': wb.add_format({'bg_color': '#cceeff', 'font_color': 'black', 'num_format': '#,##0.00 €', 'border': 1}),
+
+            # Format spécifique pour la ligne "Total des recettes" (avec le trait en dessous)
+            'footer_rec': wb.add_format({'num_format': '#,##0.00 €', 'font_size': 10, 'bottom': 1, 'border_color': '#D3D3D3'}),
+            'footer_rec_blue': wb.add_format({'num_format': '#,##0.00 €', 'bg_color': '#cceeff', 'font_size': 10, 'bottom': 1, 'border_color': '#D3D3D3'}),
+
+            # Format pour la ligne "Total des dépenses" (sans bordure basse particulière)
+            'footer_dep': wb.add_format({'num_format': '#,##0.00 €', 'font_size': 10, 'border': 1, 'border_color': '#D3D3D3'}),
+            'footer_dep_blue': wb.add_format({'num_format': '#,##0.00 €', 'bg_color': '#cceeff', 'font_size': 10, 'border': 1, 'border_color': '#D3D3D3'}),
+        }
+
+    # --- [ Logique de Données Dynamiques ] ---
+    def __get_monthly_amounts(self, year: int) -> pd.DataFrame:
         """
-        # S'assurer que toutes les colonnes sont des chaînes
-        df.columns = [str(col) for col in df.columns]
-
-        # Création du fichier Excel
-        with pd.ExcelWriter(self.__output_file, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name="Données", index=False)
-
-        # Charger le fichier Excel pour manipulation ultérieure
-        return load_workbook(self.__output_file)
-
-    def __add_to_excel_file(self, operation_categorisees: pd.DataFrame):
+        Récupère les sommes des opérations groupées par mois et sous-catégorie.
         """
-        Met à jour un fichier Excel avec les données des opérations catégorisées.
+        df = self._get_categorized_operations_df()
+        if df.empty:
+            return pd.DataFrame(columns=['sub_category', 'month_idx', 'amount'])
+        
+        df['operation_date'] = pd.to_datetime(df['operation_date'])
+        df = df[df['operation_date'].dt.year == year].copy()
+        df['month_idx'] = df['operation_date'].dt.month
+        
+        summary = df.groupby(['sub_category', 'month_idx'])['amount'].sum().reset_index()
+        summary['amount'] = summary['amount'].abs()
+        
+        return summary
 
-        Args :
-            operation_categorisees (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-
-        Actions :
-            - Crée des feuilles de bilan pour les revenus et dépenses.
-            - Formate les cellules (alignement, format de date).
-            - Crée des tableaux Excel avec style et ajustement automatique des colonnes.
-            - Sauvegarde le fichier Excel final.
+    def __get_filtered_structure(self, data_summary: pd.DataFrame) -> list:
         """
-        self.__sheet_bilan(operation_categorisees)
-        center_alignment = Alignment(horizontal='center', vertical='center')
-
-        for sheet_name in self.__wb.sheetnames:
-            if sheet_name not in ["Bilan Revenus", "Bilan Dépenses"]:
-                ws = self.__wb[sheet_name]
-                min_col, min_row, max_col, max_row = 1, 1, ws.max_column, ws.max_row
-                table_style = TableStyleInfo(
-                    name='TableStyleMedium2', showFirstColumn=False,
-                    showLastColumn=False, showRowStripes=True, showColumnStripes=True
-                )
-                safe_table_name = f'Table_{sheet_name}'.replace(" ", "_")
-                table = Table(displayName=safe_table_name, ref=f'A1:{chr(64 + max_col)}{max_row}')
-                table.tableStyleInfo = table_style
-                ws.add_table(table)
-
-                for row in ws.iter_rows(min_row=2, max_row=max_row):
-                    for cell in row:
-                        if isinstance(cell.value, datetime):
-                            cell.number_format = 'DD/MM/YYYY'
-                        cell.alignment = center_alignment
-
-                for col in ws.columns:
-                    max_length = 0
-                    column = col[0].column_letter
-                    for cell in col:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(cell.value)
-                        except Exception:
-                            pass
-                    adjusted_width = max_length + 10
-                    ws.column_dimensions[column].width = adjusted_width
-
-        self.__wb.save(self.__output_file)
-
-    def __add_dataframe_to_sheet(self, df: pd.DataFrame, sheet_name: str, start_row: int, spacing: int = 5):
+        Filtre et trie la structure par montant annuel décroissant.
         """
-        Ajoute un DataFrame à une feuille Excel avec un formatage spécifique.
+        df_sub = self._get_table_data("sub_categories")
+        if df_sub.empty:
+            return []
 
-        Args:
-            df (pd.DataFrame): DataFrame à ajouter à la feuille.
-            sheet_name (str): Nom de la feuille Excel.
-            start_row (int): Ligne de départ pour ajouter les données.
-            spacing (int): Espacement après le dernier bloc de données.
+        # Dictionnaire des totaux pour le tri
+        annual_totals = data_summary.groupby('sub_category')['amount'].sum().to_dict()
+
+        full_structure = []
+        categories = df_sub['parent_category'].unique()
+        recettes_names = ['Revenus', 'Recettes', 'Épargne']
+
+        for main_group_name, target_cats in [("RECETTES", recettes_names), ("DÉPENSES", None)]:
+            group_content = []
+            current_cats = [c for c in categories if c in target_cats] if target_cats else [c for c in categories if c not in recettes_names]
+
+            for cat in current_cats:
+                cat_items = df_sub[df_sub['parent_category'] == cat]['sub_category_name'].tolist()
+                active_items = [i for i in cat_items if annual_totals.get(i, 0) > 0]
+                
+                # Tri décroissant des items
+                active_items.sort(key=lambda x: annual_totals.get(x, 0), reverse=True)
+                
+                if active_items:
+                    group_content.append({"type": "sub", "name": cat.upper(), "items": active_items})
+
+            # Tri décroissant des sous-catégories par poids total
+            group_content.sort(key=lambda x: sum(annual_totals.get(i, 0) for i in x["items"]), reverse=True)
+
+            if group_content:
+                full_structure.append({"type": "main", "name": main_group_name})
+                full_structure.extend(group_content)
+
+        return full_structure
+
+    # --- [ Génération des Rapports ] ---
+    def __generate_annual_report(self, year: int):
         """
-        assert isinstance(df, pd.DataFrame), f"df doit être un DataFrame, mais c'est {type(df)}."
-        assert isinstance(sheet_name, str), f"sheet_name doit être une chaîne de caractères, mais c'est {type(sheet_name)}."
-        assert isinstance(start_row, int), f"start_row doit être un entier, mais c'est {type(start_row)}."
-        assert isinstance(spacing, int), f"spacing doit être un entier, mais c'est {type(spacing)}."
+        Génère le rapport Excel avec colonnes décalées et tri décroissant.
+        """
+        data_summary = self.__get_monthly_amounts(year)
+        structure = self.__get_filtered_structure(data_summary)
 
-        # Remplacer les zéros par une chaîne vide
-        df.replace(0, '', inplace=True)
+        if not structure:
+            return
 
-        if sheet_name in self.__wb.sheetnames:
-            ws = self.__wb[sheet_name]
-            start_row -= 1
-        else:
-            ws = self.__wb.create_sheet(title=sheet_name)
+        output_dir = os.path.join(self.__root_path, str(year))
+        os.makedirs(output_dir, exist_ok=True)
+        file_path = os.path.join(output_dir, f"Budget pour {year}.xlsx")
+        
+        wb = xlsxwriter.Workbook(file_path)
+        ws = wb.add_worksheet("BUDGET PERSONNEL")
+        fmt = self.__get_excel_formats(wb)
 
-        for r in dataframe_to_rows(df, index=True, header=True):
-            ws.append(r)
+        # Configuration des colonnes (N est vide pour le décalage)
+        ws.set_column('A:A', 35)
+        ws.set_column('B:M', 12)
+        ws.set_column('N:N', 3)   # Colonne de séparation
+        ws.set_column('O:O', 15)  # ANNÉE
+        ws.set_column('P:P', 15)  # RÉPARTITION
+        
+       # Fusionne de la colonne A à D (0 à 3) et centre le texte
+        ws.merge_range('A1:C1', 'BUDGET PERSONNEL', fmt['title'])
+        ws.merge_range('O1:P1', str(year), fmt['year_tag'])
 
-        # --- Styles ---
-        font_month = Font(color="FFFFFF", bold=True)
-        fill_month = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
-        alignment_center = Alignment(horizontal='center', vertical='center')
-        font_revenue = Font(color="000000", bold=True)
-        fill_revenue = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+        for col, month in enumerate(self.months):
+            ws.write(3, col + 1, month, fmt['header_month'])
 
-        border_bold = Border(right=Side(style='thin'), top=Side(style='medium'), bottom=Side(style='medium'))
-        border_bold_lr = Border(left=Side(style='medium'), right=Side(style='medium'))
-        border_bold_right = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='medium'))
-        border_standard = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        row = 4
+        sections_totals = {"RECETTES": [], "DÉPENSES": []}
+        current_main = ""
 
-        # Ligne des mois
-        for row in ws.iter_rows(min_row=start_row, max_row=start_row, min_col=2, max_col=ws.max_column):
-            for idx, cell in enumerate(row):
-                if idx != ws.max_column-4:
-                    cell.font = font_month
-                    cell.fill = fill_month
-                    cell.alignment = alignment_center
-                    cell.border = border_bold
-
-        normal = False
-        # Formatage des cellules
-        for idx_row, row in enumerate(ws.iter_rows(min_row=start_row+2, max_row=ws.max_row, min_col=0, max_col=ws.max_column)):
-            if normal:
-                for idx_col, cell in enumerate(row):
-                    if (idx_col != ws.max_column-3) and (idx_col != ws.max_column-4) and (idx_col != ws.max_column-1):
-                        if idx_col == 0:
-                            cell.border = Border(right=Side(style='medium'), bottom=Side(style='thin'))
-                        else:
-                            cell.border = border_standard
-                    elif (idx_col == ws.max_column-4) or (idx_col == ws.max_column-1):
-                        cell.border = Border(right=Side(style='medium'), bottom=Side(style='thin'))
-
-                    if (idx_row == ws.max_row-start_row-2) and (idx_col != ws.max_column-2):
-                        if idx_col == 0:
-                            cell.border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
-                        elif (idx_col == ws.max_column-4) or (idx_col == ws.max_column-1):
-                            cell.border = Border(right=Side(style='medium'), bottom=Side(style='medium'))
-                        else:
-                            cell.border = Border(right=Side(style='thin'), bottom=Side(style='medium'))
-
-                    if idx_col == ws.max_column-3:
-                        cell.border = Border(right=Side(style='medium'))
-
+        # Remplissage du corps du tableau
+        for section in structure:
+            if section["type"] == "main":
+                current_main = section["name"]
+                ws.write(row, 0, section["name"], fmt['main_cat'])
+                for col in range(1, 16):
+                    ws.write(row, col, "", fmt['main_cat'])
+                row += 1
             else:
-                for idx_col, cell in enumerate(row):
-                    if idx_col == 0:
-                        cell.font = font_revenue
-                        cell.fill = fill_revenue
-                        cell.border = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='medium'))
-                    elif idx_col != ws.max_column-3:
-                        cell.font = font_revenue
-                        cell.fill = fill_revenue
-                        cell.border = border_bold
-                    else:
-                        cell.border = border_bold_lr
+                ws.write(row, 0, section["name"], fmt['sub_cat'])
+                for col in range(1, 16):
+                    ws.write(row, col, "", fmt['sub_cat'])
+                row += 1
+                start_items_row = row
+                
+                for item in section["items"]:
+                    ws.write(row, 0, item, fmt['item_label'])
+                    # Mois (B à M)
+                    for month_idx in range(1, 13):
+                        val = data_summary[(data_summary['sub_category'] == item) & 
+                                           (data_summary['month_idx'] == month_idx)]['amount'].sum()
+                        cell_fmt = fmt['currency_blue'] if month_idx % 2 == 0 else fmt['currency']
+                        ws.write(row, month_idx, val, cell_fmt)
+                    
+                    # Total Annuel décalé en colonne O (indice 14)
+                    row_idx = row + 1
+                    ws.write_formula(row, 14, f"=SUM(B{row_idx}:M{row_idx})", fmt['total_column'])
+                    row += 1
+                
+                # Ligne Total de sous-catégorie
+                ws.write(row, 0, "Total", fmt['total_label'])
+                for col in range(1, 15):
+                    if col == 13:
+                        continue # On saute la colonne N vide
 
-                row[-1].border = border_bold_right
-                normal = True
+                    col_let = xlsxwriter.utility.xl_col_to_name(col)
+                    ws.write_formula(row, col, f"=SUM({col_let}{start_items_row+1}:{col_let}{row})", fmt['total_val'])
+                
+                sections_totals[current_main].append(row + 1)
+                row += 2
 
-        # Largeurs colonnes
-        ws.column_dimensions['A'].width = 250 / 7
-        ws.column_dimensions['P'].width = 100 / 7
-        columns = [chr(i) for i in range(ord('B'), ord('M') + 1)] + ['O']
-        for col_letter in columns:
-            ws.column_dimensions[col_letter].width = 69 / 7
+        # Footer
+        # On ajoute une ligne vide pour aérer le tableau avant le footer
+        row += 1 
+        row_total_recettes = row
+        row_total_depenses = row + 1
+        row_tresorerie = row + 2
 
-        for cell in ws['P']:
-            cell.alignment = alignment_center
+        # Libellés à gauche
+        ws.write(row_total_recettes, 0, "Total des recettes", fmt['item_label'])
+        ws.write(row_total_depenses, 0, "Total des dépenses", fmt['item_label'])
+        ws.write(row_tresorerie, 0, "Déficit/excédent de trésorerie", fmt['total_label'])
 
-        # Espacement
-        ws.append([''] * ws.max_column)
-        for _ in range(spacing-1):
-            ws.append([''] * ws.max_column)
+        for col in range(1, 15):
+            if col == 13:
+                continue # On saute la colonne N vide
 
-        # Bordure cellule spécifique
-        last_row_idx = ws.max_row - spacing
-        second_last_col_idx = ws.max_column - 2
-        specific_cell = ws.cell(row=last_row_idx, column=second_last_col_idx + 1)
-        specific_cell.border = Border(right=Side(style='thin'), bottom=Side(style='medium'))
+            col_let = xlsxwriter.utility.xl_col_to_name(col)
+            rec_f = "+".join([f"{col_let}{r}" for r in sections_totals["RECETTES"]]) if sections_totals["RECETTES"] else "0"
+            dep_f = "+".join([f"{col_let}{r}" for r in sections_totals["DÉPENSES"]]) if sections_totals["DÉPENSES"] else "0"
+            
+            # Détermination de l'alternance de bleu (uniquement pour les mois pairs B, D, F...)
+            is_blue_col = (col % 2 == 0 and col <= 12)
 
-        # Format monétaire et pourcentage
-        money_format = '#,##0.00 €'
-        percentage_format = '0.00%'
+            # 1. Ligne Recettes (avec bordure basse)
+            f_rec = fmt['footer_rec_blue'] if is_blue_col else fmt['footer_rec']
+            ws.write_formula(row_total_recettes, col, f"={rec_f}", f_rec)
 
-        for col_num, col_name in enumerate(df.columns):
-            col_name = col_name.strip()
-            if col_name in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total']:
-                for row in ws.iter_rows(min_row=start_row+1, max_row=ws.max_row, min_col=col_num+2, max_col=col_num+2):
-                    for cell in row:
-                        cell.number_format = money_format
+            # 2. Ligne Dépenses (format standard)
+            f_dep = fmt['footer_dep_blue'] if is_blue_col else fmt['footer_dep']
+            ws.write_formula(row_total_depenses, col, f"={dep_f}", f_dep)
 
-        if 'Pourcentage' in df.columns:
-            pct_col = df.columns.get_loc('Pourcentage')
-            for row in ws.iter_rows(min_row=start_row+1, max_row=ws.max_row, min_col=pct_col+2, max_col=pct_col+2):
-                for cell in row:
-                    cell.number_format = percentage_format
+            # 3. Ligne Trésorerie (Gras, Fond Gris, Bordure épaisse bas)
+            ws.write_formula(row_tresorerie, col, f"=({col_let}{row_total_recettes+1})-({col_let}{row_total_depenses+1})", fmt['total_val'])
 
-    def __sheet_bilan(self, operation_categorisees: pd.DataFrame):
+        # Nettoyage visuel de la colonne N (13) pour les lignes du footer
+        ws.write(row_total_recettes, 13, "", None)
+        ws.write(row_total_depenses, 13, "", None)
+        ws.write(row_tresorerie, 13, "", None)
+
+        # Post-process : Pourcentages en colonne P (15)
+        current_main = ""
+        row_cursor = 4
+        for section in structure:
+            if section["type"] == "main":
+                current_main = section["name"]
+                row_cursor += 1
+            else:
+                row_cursor += 1
+                target_total = f"O{row_total_recettes+1}" if current_main == "RECETTES" else f"O{row_total_depenses+1}"
+                
+                for _ in section["items"]:
+                    ws.write_formula(row_cursor, 15, f"=IF({target_total}<>0, O{row_cursor+1}/{target_total}, 0)", fmt['percent_style'])
+                    row_cursor += 1
+                
+                # Total de section en Gras
+                ws.write_formula(row_cursor, 15, f"=IF({target_total}<>0, O{row_cursor+1}/{target_total}, 0)", fmt['percent_bold'])
+                row_cursor += 2
+
+        wb.close()
+
+    def generate_all_reports(self):
         """
-        Prépare et ajoute les bilans des revenus et dépenses dans les feuilles Excel correspondantes.
-
-        Args :
-            operation_categorisees (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-
-        Actions :
-            - Crée un bilan par sous-catégories pour les revenus et l'ajoute à la feuille "Bilan Revenus".
-            - Crée un bilan par catégories et sous-catégories pour les dépenses et l'ajoute à la feuille "Bilan Dépenses".
+        Génère les rapports pour chaque année présente en base.
         """
-        df_revenus = ReportDataHandler._get_income_df(operation_categorisees)
-        df_revenus_save = self.__bilan_subcategories(df_revenus, "Revenus")
-        self.__add_dataframe_to_sheet(df_revenus_save, "Bilan Revenus", 1)
-
-        df_depenses = ReportDataHandler._get_expense_df(operation_categorisees)
-        df_depenses_save = self.__bilan_categories(df_depenses, "Dépenses")
-        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", 1)
-
-        df_depenses_save = self.__bilan_subcategories(df_depenses, "Dépenses")
-        self.__add_dataframe_to_sheet(df_depenses_save, "Bilan Dépenses", self.__wb["Bilan Dépenses"].max_row + 2)
-
-
-    # --- [ Traitement des Données ] ---
-    def __bilan_categories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
-        """
-        Agrège les montants par catégorie et par mois, calcule les totaux et pourcentages, 
-        et prépare un DataFrame prêt à être exporté vers Excel.
-
-        Args:
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
-
-        Returns:
-            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par catégorie.
-        """
-        df_revenus["mois"] = df_revenus["operation_date"].dt.strftime("%b")
-        df_resultat = (
-            df_revenus.groupby(["mois", "category"])['amount']
-            .sum()
-            .reset_index()
-            .sort_values(["mois", "category"])
-        )
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        df_pivot = df_resultat.pivot_table(
-            index="category",
-            columns="mois",
-            values='amount',
-            aggfunc="sum",
-            fill_value=0
-        )
-        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
-
-        # Calculer Total et Pourcentage pour chaque sous-catégorie
-        df_pivot["Total"] = df_pivot[months].sum(axis=1)
-        total_general = df_pivot["Total"].sum()
-        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
-
-        # Créer la ligne sheet_name avec les totaux par mois uniquement
-        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
-        revenus_total[''] = ' '                           # colonne vide
-        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
-        revenus_total['Pourcentage'] = 1.0               # 100%
-        revenus_total.name = sheet_name
-
-        # Ajouter la ligne sheet_name au-dessus
-        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
-
-        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
-        df_sorted = pd.concat(
-            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
-        )
-
-        return df_sorted
-
-    def __bilan_subcategories(self, df_revenus: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
-        """
-        Agrège les montants par sous-catégorie et par mois, calcule les totaux et pourcentages, 
-        et prépare un DataFrame prêt à être exporté vers Excel.
-
-        Args:
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations catégorisées.
-            sheet_name (str) : nom de la feuille ou ligne de total à ajouter en tête.
-
-        Returns:
-            pd.DataFrame : DataFrame pivoté avec les totaux et pourcentages par sous-catégorie.
-        """
-        df_revenus["mois"] = df_revenus["operation_date"].dt.strftime("%b")
-        df_resultat = (
-            df_revenus.groupby(["mois", "sub_category"])['amount']
-            .sum()
-            .reset_index()
-            .sort_values(["mois", "sub_category"])
-        )
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        df_pivot = df_resultat.pivot_table(
-            index="sub_category",
-            columns="mois",
-            values='amount',
-            aggfunc="sum",
-            fill_value=0
-        )
-        df_pivot = df_pivot.reindex(columns=months, fill_value=0)
-
-        # Calculer Total et Pourcentage pour chaque sous-catégorie
-        df_pivot["Total"] = df_pivot[months].sum(axis=1)
-        total_general = df_pivot["Total"].sum()
-        df_pivot["Pourcentage"] = (df_pivot["Total"] / total_general).round(4)
-
-        # Créer la ligne sheet_name avec les totaux par mois uniquement
-        revenus_total = df_pivot[months].sum()            # somme uniquement des mois
-        revenus_total[''] = ' '                           # colonne vide
-        revenus_total['Total'] = df_pivot["Total"].sum()  # total général
-        revenus_total['Pourcentage'] = 1.0               # 100%
-        revenus_total.name = sheet_name
-
-        # Ajouter la ligne sheet_name au-dessus
-        df_pivot = pd.concat([pd.DataFrame([revenus_total]), df_pivot])
-
-        # Trier les sous-catégories par Total ou Pourcentage (exclure sheet_name)
-        df_sorted = pd.concat(
-            [df_pivot.loc[[sheet_name]], df_pivot.drop(sheet_name).sort_values(by='Pourcentage', ascending=False)]
-        )
-
-        return df_sorted
+        df = self._get_categorized_operations_df()
+        if df.empty:
+            return
+        df['operation_date'] = pd.to_datetime(df['operation_date'])
+        years = sorted(df['operation_date'].dt.year.unique())
+        for year in years:
+            self.__generate_annual_report(year)
