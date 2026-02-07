@@ -9,7 +9,7 @@ from bank_accounts.bnp_paribas.report_data_handler import ReportDataHandler
 from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class GraphiqueFinancier(BnpParibasDatabase):
+class FinancialChart(BnpParibasDatabase):
     """
     Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire. 
     Elle hérite de `BnpParibasDatabase` et fournit des méthodes pour :
@@ -38,26 +38,18 @@ class GraphiqueFinancier(BnpParibasDatabase):
 
 
     # --- [ Flux Principal ] ---
-    def generate_all_reports(self, two_last_year_only: bool):
+    def generate_all_reports(self):
         """
         Génère les bilans financiers annuels et mensuels à partir des opérations catégorisées.
 
-        Cette méthode crée pour chaque année (ou uniquement pour les deux dernières si `last_year` est True) :
+        Cette méthode crée pour chaque année :
         - Des graphiques Sankey pour visualiser les flux financiers.
         - Des graphiques circulaires (sunburst) pour détailler la répartition des revenus et dépenses.
         - Des histogrammes empilés pour visualiser les dépenses par mois.
 
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
-
-        Args :
-        - two_last_year_only (bool) : si True, génère les bilans pour les deux dernières années disponibles.
         """
         years_operations_categorisees = self._get_categorized_operations_by_year()
-
-        # Créez les graphiques uniquement pour les 2 dernières années
-        if two_last_year_only:
-            two_last_years = list(years_operations_categorisees.keys())[-2:]
-            years_operations_categorisees = {year: years_operations_categorisees[year] for year in two_last_years}
 
         # Regroupe toutes les opérations pour faire le bilan des différentes années
         all_operation_categorisees = pd.DataFrame()
@@ -72,11 +64,12 @@ class GraphiqueFinancier(BnpParibasDatabase):
             self.__generate_monthly_report(operation_categorisees, year)
             
         # Bilan de toutes les années
-        annees = list(years_operations_categorisees.keys())
-        self.__output_file = f"{self.__root_path}/Bilan {annees[0]}-{annees[-1]}.html"
-        df_revenus = self.report_data_handler._get_income_df(all_operation_categorisees)
-        df_depenses = self.report_data_handler._get_expense_df(all_operation_categorisees)
-        self.__generate_annual_report(df_revenus, df_depenses, all_operation_categorisees)
+        years = list(years_operations_categorisees.keys())
+        if years != []:
+            self.__output_file = f"{self.__root_path}/Bilan {years[0]}-{years[-1]}.html"
+            df_revenus = self.report_data_handler._get_income_df(all_operation_categorisees)
+            df_depenses = self.report_data_handler._get_expense_df(all_operation_categorisees)
+            self.__generate_annual_report(df_revenus, df_depenses, all_operation_categorisees)
 
     
     # --- [ Production des Bilans ] ---
@@ -906,12 +899,10 @@ class GraphiqueFinancier(BnpParibasDatabase):
                         Object.keys(sub).forEach(y => yearSet.add(Number(y)));
                     }});
                 }});
-                // MODIFICATION ICI : Tri décroissant (reverse) pour le menu
                 return Array.from(yearSet).sort((a,b) => b - a);
             }}
 
             let allYears = getAllYears();
-            // MODIFICATION ICI : On sélectionne l'index 0 (l'année la plus élevée après le tri)
             let selectedYear = allYears.length > 0 ? allYears[0] : new Date().getFullYear();
 
             function buildSeries() {{
@@ -919,7 +910,6 @@ class GraphiqueFinancier(BnpParibasDatabase):
                 let columnSeries = []; 
 
                 if (viewMode === 'years') {{
-                    // Pour le graphique en mode années, on garde l'ordre chronologique (croissant)
                     categories = [...allYears].sort((a,b) => a - b);
 
                     if (showCategories) {{
@@ -1019,9 +1009,18 @@ class GraphiqueFinancier(BnpParibasDatabase):
                         tooltip: {{
                             shared: false, useHTML: true,
                             formatter: function() {{
-                                const color_montant = this.y >= 0 ? '#00E272' : '#FF0000';
+                                let color_montant;
+                                if (this.series.options.stack === 'depenses') {{
+                                    color_montant = '#FF0000'; // Rouge pour les dépenses
+                                }} else if (this.series.options.stack === 'revenus') {{
+                                    color_montant = '#00E272'; // Vert pour les revenus
+                                }} else {{
+                                    color_montant = this.y >= 0 ? '#00E272' : '#FF0000';
+                                }}
+
                                 let tooltipHtml = `<span style="color:${{color_montant}}">\u25CF</span> <b>${{this.series.name}}</b><br/>` +
                                                 `Montant: <b style="color:${{color_montant}}">${{this.y}} €</b>`;
+                                
                                 if(this.series.name === 'Épargne nette' && viewMode === 'years') {{
                                     const index = this.point.index;
                                     if (index > 0) {{
@@ -1031,7 +1030,8 @@ class GraphiqueFinancier(BnpParibasDatabase):
                                             const color_v = change >= 0 ? '#00E272' : '#FF0000';
                                             tooltipHtml += `<br/>Variation: <b style="color:${{color_v}}">${{change > 0 ? '+' : ''}}${{change.toFixed(1)}}%</b>`;
                                         }}
-                                    }}}}
+                                    }}
+                                }}
                                 return tooltipHtml;
                             }}
                         }},
@@ -1047,7 +1047,6 @@ class GraphiqueFinancier(BnpParibasDatabase):
                 updateNetSavings();
             }}
 
-            // --- GESTION DU MENU DÉROULANT ---
             const yearSelect = document.getElementById('yearSelect');
             allYears.forEach((y, index) => {{
                 const opt = document.createElement('option');
