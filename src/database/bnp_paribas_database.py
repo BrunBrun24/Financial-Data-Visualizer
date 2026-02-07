@@ -18,78 +18,86 @@ class BnpParibasDatabase(BaseDatabase):
     - Grouper et organiser les opérations par année pour les analyses.
     """
 
-    _BUTTON_LABELS = {
-        'Épargne': ["Livret A"],
-        'Investissement': ["CTO", "Autres"],
-        'Revenus': [
-            "Aides et allocations", "Salaires et revenus d'activité", 
-            "Revenus de placement", "Pensions", "Intérêts", "Loyers", 
-            "Dividendes", "Remboursement", "Chèques reçus", "Déblocage emprunt", 
-            "Virements reçus", "Virements internes", "Cashback", "Autres"
-        ],
-        'Abonnement': ["Téléphone", "Internet", "Streaming", "Logiciels", "Musiques"],
-        'Impôts': [
-            "Impôts sur taxes", "Impôt sur le revenu", "Impôt sur la fortune", 
-            "Taxe foncière", "Taxe d'habitation", "Contributions sociales (CSG / CRDS)", 
-            "Bourse (flat tax)"
-        ],
-        'Banque': [
-            "Remboursement emprunt", "Frais bancaires", 
-            "Prélèvement carte débit différé", "Retrait d'espèces", "Autres"
-        ],
-        "Logement": [
-            "Électricité, gaz", "Eau", "Chauffage", "Loyer", "Prêt immobilier", 
-            "Bricolage et jardinage", "Assurance habitation", 
-            "Mobilier, électroménager, déco", "Autres"
-        ],
-        'Loisirs et sorties': [
-            "Voyages, vacances", "Restaurants - Fast food", "Bars", 
-            "Boites de nuit", "Divertissements, sorties culturelles", 
-            "Sports", "Sorties", "Pari perdu", "Concerts", "Spectacles", "Autres"
-        ],
-        'Santé': ["Médecin", "Pharmacie", "Dentiste", "Mutuelle", "Opticien", "Hôpital"],
-        'Transports et véhicules': [
-            "Assurance véhicule", "Crédit auto", "Carburant", "Entretien véhicule", 
-            "Transports en commun", "Avion", "Train", "Taxis, VTC", 
-            "Location de véhicule", "Péage", "Stationnement"
-        ],
-        'Vie quotidienne': [
-            "Alimentation - Supermarché", "Frais animaux", "Coiffeur, soins", 
-            "Habillement", "Achat, shopping", "Jeux vidéo", "Frais postaux", 
-            "Achat multimédias - High tech", "Aide à domicile", "Cadeaux", 
-            "Échange d'argent", "Autres"
-        ],
-        'Enfants': [
-            "Pension alimentaire", "Crèche, baby-sitter", "Scolarité, études", 
-            "Argent de poche", "Activités enfants"
-        ],
-        'Amendes': ["Amende de stationnement"],
-        'Couple': [
-            'Aides financières', 'Cadeaux - Petits plaisirs', 'Restaurants - Nourritures',
-            'Voyages & week-ends', 'Loisirs & activités', 'Abonnements partagés'
-        ],
-        'Parents': ['Aides'],
-        'Scolarité': ['Frais de scolarité', 'Alimentation'],
-    }
-
     def __init__(self, db_path: str):
         """
         Initialise la connexion et prépare la structure de la base de données.
 
         Prépare l'environnement de la base de données en s'assurant que le schéma 
-        SQL est présent, que les catégories par défaut sont insérées et que 
-        l'intégrité des données est respectée par rapport à la configuration actuelle.
+        SQL est présent et que l'intégrité des données est respectée par rapport 
+        à la configuration actuelle.
 
         Agrs:
         - db_path (str) : Chemin complet vers le fichier de base de données SQLite.
         """
         super().__init__(db_path)
+        self._categories_labels = {
+            'Épargne': ["Livret A"],
+            'Investissement': ["CTO", "PEA", "Cryptomonnaies"],
+            'Revenus': [
+                "Aides - Allocations", "Salaires", "Revenus d'activité", 
+                "Revenus de placement", "Pensions", "Intérêts", "Loyers", 
+                "Remboursement", "Chèques reçus", "Déblocage emprunt", 
+                "Virements reçus", "Virements internes", "Cashback",
+            ],
+            'Abonnement': ["FAI", "Streaming", "Logiciels", "Musiques", "Assurance habitation", 
+                        "Assurance véhicule", "Assurance Bancaire", 'Abonnements partagés'],
+            'Impôts': [
+                "Impôts sur taxes", "Impôt sur le revenu", "Impôt sur la fortune", 
+                "Taxe foncière", "Taxe d'habitation", "Contributions sociales (CSG / CRDS)", 
+                "Bourse (flat tax)"
+            ],
+            'Banque': [
+                "Remboursement emprunt", "Frais bancaires", "Frais de carte",
+                "Retrait d'espèces"
+            ],
+            "Logement": [
+                "Électricité - gaz", "Eau", "Chauffage", "Loyer", "Prêt immobilier", 
+                "Bricolage - Jardinage"
+            ],
+            'Alimentation extérieure': [
+                "Restauration", "Restaurants", "Fast-food", "Stand - Food truck",
+                "Boulangerie - Snacks", "Vente à emporter"
+            ],
+            'Loisirs': [
+                "Vacances - Voyages", "Activités", "Événements sportifs",
+                "Spectacles - Culture"
+            ],
+            'Sorties': [
+                "Bars - Cafés", "Boîte de nuit", "Sorties amis - Afters",
+                "Pari perdu"
+            ],
+            'Santé': ["Médecin", "Pharmacie", "Dentiste", "Mutuelle", "Opticien", "Hôpital", 
+                    "Kinésithérapie", "Dermatologue", "Analyse médicale"
+            ],
+            'Transports et véhicules': [
+                "Crédit auto", "Carburant", "Entretien véhicule", 
+                "Transports en commun", "Avion", "Train", "Taxis, VTC", 
+                "Location de véhicule", "Péage", "Stationnement"
+            ],
+            'Vie quotidienne': [
+                "Supermarché", "Coiffeur, soins", 
+                "Frais postaux", "Aide à domicile", "Échange d'argent"
+            ],
+            "Achat": [
+                "Shopping", "Jeux vidéos", "High tech", "Cadeaux"
+            ],
+            'Enfants': [
+                "Pension alimentaire", "Crèche, baby-sitter", "Scolarité - Études", 
+                "Argent de poche", "Activités enfants"
+            ],
+            'Amendes': ["Amende de stationnement"],
+            'Couple': [
+                'Aides financières', 'Cadeaux - Petits plaisirs', 'Restaurants - Nourritures',
+                'Voyages - week-ends', 'Loisirs - activités'
+            ],
+            'Parents': ['Aides']
+        }
+        
         self.__create_database_schema()
         self.__verify_category_consistency()
-        self.__insert_default_categories()
 
 
-    # --- [ Méthodes principales pour manipuler les opérations et fusionner les bases ] ---
+    # --- [ Flux Principal ] ---
     def add_raw_data(self, df: pd.DataFrame):
         """
         Ajoute des lignes dans la table `raw_data` en gérant les doublons légitimes.
@@ -158,32 +166,37 @@ class BnpParibasDatabase(BaseDatabase):
         connection.commit()
         connection.close()
         
+    @staticmethod
     def merge_bank_databases(source_db_path: str, target_db_path: str, output_path: str):
         """
         Fusionne deux bases de données bancaires en préservant l'intégrité référentielle.
 
-        Cette fonction crée une nouvelle base de données à partir de la première, puis
-        importe les données de la seconde. Elle gère la réassignation des clés étrangères
-        pour éviter que les liens entre catégories et opérations ne soient rompus à cause
-        de la réindexation des identifiants (Auto-increment).
+        Cette fonction crée une copie de la source, y attache la base cible, 
+        puis transfère les données en utilisant une table de correspondance temporaire 
+        pour réassocier correctement les nouveaux IDs générés.
 
         Args:
-            source_db_path (str): Chemin vers la première base de données (base).
-            target_db_path (str): Chemin vers la seconde base de données à intégrer.
-            output_path (str): Chemin du fichier de destination final.
+            - source_db_path (str) : Chemin vers la première base de données (base).
+            - target_db_path (str) : Chemin vers la seconde base de données à intégrer.
+            - output_path (str) : Chemin du fichier de destination final.
         """
         try:
+            # Préparation du dossier de destination
             directory = os.path.dirname(output_path)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory)
 
+            # Copie de la base source vers la destination
             shutil.copy2(source_db_path, output_path)
             
             connection = sqlite3.connect(output_path)
+            connection.execute("PRAGMA foreign_keys = ON;")
             cursor = connection.cursor()
+            
+            # Attacher la base de données cible
             cursor.execute(f"ATTACH DATABASE '{target_db_path}' AS db_to_merge")
 
-            # Fusion des catégories et sous-catégories (nom -> name)
+            # 1. Fusion des catégories et sous-catégories (sans doublons)
             cursor.execute("INSERT OR IGNORE INTO categories (name) SELECT name FROM db_to_merge.categories")
             
             cursor.execute("""
@@ -193,22 +206,39 @@ class BnpParibasDatabase(BaseDatabase):
                 JOIN db_to_merge.categories c ON sc.category_id = c.id
             """)
 
-            # Fusion des données brutes
-            cols_raw = "operation_date, short_label, operation_type, full_label, amount, processed"
-            cursor.execute(f"INSERT INTO raw_data ({cols_raw}) SELECT {cols_raw} FROM db_to_merge.raw_data")
+            # 2. Création d'une table de correspondance temporaire pour les IDs de raw_data
+            # Cela permet de savoir quel ID de la base cible correspond à quel ID dans la nouvelle base.
+            cursor.execute("CREATE TEMP TABLE id_mapping (old_id INTEGER, new_id INTEGER)")
 
-            # Fusion des opérations catégorisées avec remappage des IDs
+            # 3. Insertion des données brutes et remplissage du mapping
+            # On récupère les données de la base cible
+            cursor.execute("SELECT id, operation_date, short_label, operation_type, full_label, amount, processed FROM db_to_merge.raw_data")
+            rows_to_merge = cursor.fetchall()
+
+            for row in rows_to_merge:
+                old_id = row[0]
+                # Insertion dans la nouvelle table (l'ID est auto-généré)
+                cursor.execute("""
+                    INSERT INTO raw_data (operation_date, short_label, operation_type, full_label, amount, processed)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, row[1:])
+                new_id = cursor.lastrowid
+                # On mémorise le lien entre l'ancien et le nouveau
+                cursor.execute("INSERT INTO id_mapping VALUES (?, ?)", (old_id, new_id))
+
+            # 4. Fusion des opérations catégorisées en utilisant le mapping
+            # On désactive temporairement le TRIGGER pour ne pas interférer avec le flag 'processed' déjà importé
             cursor.execute("""
-                INSERT INTO categorized_operations (
-                    category_id, sub_category_id, raw_data_id, 
-                    operation_date, short_label, operation_type, full_label, amount
-                )
+                INSERT INTO categorized_operations (category_id, sub_category_id, raw_data_id)
                 SELECT 
-                    (SELECT id FROM categories WHERE name = (SELECT name FROM db_to_merge.categories WHERE id = co.category_id)),
-                    (SELECT id FROM sub_categories WHERE name = (SELECT name FROM db_to_merge.sub_categories WHERE id = co.sub_category_id)),
-                    (SELECT id FROM raw_data WHERE full_label = co.full_label AND operation_date = co.operation_date AND amount = co.amount),
-                    operation_date, short_label, operation_type, full_label, amount
-                FROM db_to_merge.categorized_operations co
+                    (SELECT id FROM categories WHERE name = c_merged.name),
+                    (SELECT id FROM sub_categories WHERE name = sc_merged.name 
+                        AND category_id = (SELECT id FROM categories WHERE name = c_merged.name)),
+                    m.new_id
+                FROM db_to_merge.categorized_operations co_merged
+                JOIN db_to_merge.categories c_merged ON co_merged.category_id = c_merged.id
+                JOIN db_to_merge.sub_categories sc_merged ON co_merged.sub_category_id = sc_merged.id
+                JOIN id_mapping m ON co_merged.raw_data_id = m.old_id
             """)
 
             connection.commit()
@@ -216,61 +246,12 @@ class BnpParibasDatabase(BaseDatabase):
             connection.close()
 
         except Exception as error:
+            if 'connection' in locals():
+                connection.rollback()
             raise RuntimeError(f"Échec du processus de fusion : {str(error)}")
 
 
-    # --- [ Méthodes protégées liées à la récupération et l'enregistrement des transactions ] ---
-    def _get_category_mappings(self) -> tuple:
-        """
-		Charge toutes les catégories et sous-catégories depuis la base de données.
-
-		Returns:
-		- category_ids : dictionnaire { 'Categorie': categorie_id }
-		- sub_category_ids : dictionnaire { 'Categorie': { 'Sous-categorie': sous_categorie_id } }
-        """
-        connection = sqlite3.connect(self._db_path)
-        cursor = connection.cursor()
-
-        cursor.execute("SELECT id, name FROM categories ORDER BY name")
-        category_rows = cursor.fetchall()
-
-        category_ids = {}
-        sub_category_ids = {}
-
-        for cat_id, cat_name in category_rows:
-            category_ids[cat_name] = cat_id
-
-            cursor.execute("""
-                SELECT id, name FROM sub_categories
-                WHERE category_id = ? ORDER BY name
-            """, (cat_id,))
-            
-            sub_category_ids[cat_name] = {row[1]: row[0] for row in cursor.fetchall()}
-
-        connection.close()
-        return category_ids, sub_category_ids
-
-    def _get_categories_hierarchy(self) -> dict:
-        """
-        Récupère l'arborescence des noms de catégories.
-
-		Returns:
-		- dict : dictionnaire { 'Categorie': [liste des sous-catégories] }
-        """
-        connection = sqlite3.connect(self._db_path)
-        cursor = connection.cursor()
-
-        cursor.execute("SELECT id, name FROM categories")
-        categories = cursor.fetchall()
-
-        result = {}
-        for cat_id, cat_name in categories:
-            cursor.execute("SELECT name FROM sub_categories WHERE category_id = ? ORDER BY name", (cat_id,))
-            result[cat_name] = [row[0] for row in cursor.fetchall()]
-
-        connection.close()
-        return result
-
+    # --- [ Getters ] ---
     def _get_unprocessed_raw_operations(self) -> list:
         """
         Récupère les transactions brutes non traitées (processed = 0).
@@ -293,32 +274,39 @@ class BnpParibasDatabase(BaseDatabase):
 
     def _get_categorized_operations_df(self) -> pd.DataFrame:
         """
-        Récupère les opérations catégorisées en DataFrame.
+        Récupère les opérations catégorisées en joignant les tables via les pointeurs.
 
         Returns:
-            - pd.DataFrame : Données jointes des transactions et leurs catégories.
+            - pd.DataFrame : Données reconstruites (id_brut, catégorie, sous-catégorie, date, etc.).
         """
         connection = sqlite3.connect(self._db_path)
-        cursor = connection.cursor()
-
-        cursor.execute("""
-            SELECT co.id, c.name AS category, sc.name AS sub_category,
-                   co.operation_date, co.short_label, co.operation_type,
-                   co.full_label, co.amount
+        
+        # On utilise JOIN (ou LEFT JOIN) pour rassembler les données éparpillées
+        # La table 'categorized_operations' sert de pivot central.
+        query = """
+            SELECT 
+                r.id, 
+                c.name AS category, 
+                sc.name AS sub_category,
+                r.operation_date, 
+                r.short_label, 
+                r.operation_type,
+                r.full_label, 
+                r.amount
             FROM categorized_operations co
-            LEFT JOIN categories c ON co.category_id = c.id
-            LEFT JOIN sub_categories sc ON co.sub_category_id = sc.id
-            ORDER BY co.operation_date ASC, co.id ASC
-        """)
+            JOIN raw_data r ON co.raw_data_id = r.id
+            JOIN categories c ON co.category_id = c.id
+            JOIN sub_categories sc ON co.sub_category_id = sc.id
+            ORDER BY r.operation_date ASC, r.id ASC
+        """
 
-        rows = cursor.fetchall()
+        # Utilisation de pandas pour lire directement le flux SQL
+        df = pd.read_sql_query(query, connection)
         connection.close()
 
-        df = pd.DataFrame(rows, columns=[
-            'id', 'category', 'sub_category', 'operation_date', 
-            'short_label', 'operation_type', 'full_label', 'amount'
-        ])
+        # Conversion de la date en objet datetime
         df["operation_date"] = pd.to_datetime(df["operation_date"])
+            
         return df
 
     def _get_categorized_operations_by_year(self) -> dict:
@@ -336,62 +324,161 @@ class BnpParibasDatabase(BaseDatabase):
             years_dict[int(year)] = year_df.reset_index(drop=True)
         return years_dict
 
-    def _save_categorized_transaction(self, raw_row: tuple, category_id: int, sub_category_id: int):
+    def __get_or_create_category_id(self, category_name: str) -> int:
         """
-		Enregistre une opération catégorisée dans la base de données
-		et marque la ligne correspondante dans `donnees_brutes` comme traitée.
+        Récupère l'identifiant d'une catégorie ou la crée si elle n'existe pas.
 
-		Args:
-		- raw_row : tuple contenant les données brutes de l'opération
-		- category_id : int, identifiant de la catégorie
-		- sub_category_id : int, identifiant de la sous-catégorie
+        Args:
+            - category_name (str) : Le nom de la catégorie.
+        
+        Returns:
+            - int : L'identifiant technique (ID) de la catégorie.
         """
-        raw_id = raw_row[0]
         connection = sqlite3.connect(self._db_path)
         cursor = connection.cursor()
-
-        cursor.execute("""
-            INSERT INTO categorized_operations
-            (category_id, sub_category_id, raw_data_id, operation_date, 
-             short_label, operation_type, full_label, amount)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (category_id, sub_category_id, raw_row[0], raw_row[1], 
-              raw_row[2], raw_row[3], raw_row[4], raw_row[5]))
-
-        cursor.execute("UPDATE raw_data SET processed = 1 WHERE id = ?", (raw_id,))
+        
+        # Recherche de l'ID existant
+        cursor.execute("SELECT id FROM categories WHERE name = ?", (category_name,))
+        result = cursor.fetchone()
+        
+        if result:
+            category_id = result[0]
+        else:
+            # Création si inexistante
+            cursor.execute("INSERT INTO categories (name) VALUES (?)", (category_name,))
+            category_id = cursor.lastrowid
+            
         connection.commit()
         connection.close()
+        return category_id
 
-
-    # --- [ Méthodes privées pour la création, l'insertion par défaut et la vérification d'intégrité ] ---
-    def __create_database_schema(self):
+    def __get_or_create_sub_category_id(self, category_id: int, sub_category_name: str) -> int:
         """
-        Crée le schéma initial de la base de données SQLite avec une nomenclature anglaise.
+        Récupère l'ID d'une sous-catégorie ou la crée pour une catégorie parente donnée.
 
-        Génère les tables nécessaires pour stocker les catégories, les 
-        sous-catégories, les transactions brutes importées (raw_data) et les 
-        opérations finales catégorisées (categorized_operations).
+        Args:
+            - category_id (int) : L'ID de la catégorie parente.
+            - sub_category_name (str) : Le nom de la sous-catégorie.
+
+        Returns:
+            - int : L'identifiant technique (ID) de la sous-catégorie.
+        """
+        connection = sqlite3.connect(self._db_path)
+        cursor = connection.cursor()
+        
+        cursor.execute("""
+            SELECT id FROM sub_categories 
+            WHERE category_id = ? AND name = ?
+        """, (category_id, sub_category_name))
+        result = cursor.fetchone()
+        
+        if result:
+            sub_category_id = result[0]
+        else:
+            # Création liée à la catégorie parente
+            cursor.execute("""
+                INSERT INTO sub_categories (category_id, name) 
+                VALUES (?, ?)
+            """, (category_id, sub_category_name))
+            sub_category_id = cursor.lastrowid
+            
+        connection.commit()
+        connection.close()
+        return sub_category_id
+
+
+    # --- [ Enregistrement ] ---
+    def _save_categorized_transaction(self, row: list, category_name: str, sub_category_name: str):
+        """
+        Enregistre la liaison entre une opération brute et ses catégories.
+        
+        Cette méthode convertit les noms de catégories en identifiants techniques 
+        (en les créant si nécessaire) avant d'insérer la liaison. 
+        Note : Le flag 'processed' dans 'raw_data' est mis à jour par un TRIGGER SQL.
+
+        Args:
+            - row (list) : La ligne de l'opération brute (l'ID doit être en index 0).
+            - category_name (str) : Le nom de la catégorie parente.
+            - sub_category_name (str) : Le nom de la sous-catégorie.
         """
         connection = sqlite3.connect(self._db_path)
         cursor = connection.cursor()
 
-        cursor.execute("""
+        # Récupération ou création des identifiants techniques (IDs)
+        category_id = self.__get_or_create_category_id(category_name)
+        sub_category_id = self.__get_or_create_sub_category_id(category_id, sub_category_name)
+
+        try:
+            cursor.execute("""
+                INSERT INTO categorized_operations (raw_data_id, category_id, sub_category_id)
+                VALUES (?, ?, ?)
+            """, (row[0], category_id, sub_category_id))
+            connection.commit()
+        except sqlite3.Error as error:
+            connection.rollback()
+            print(f"Erreur SQL lors de l'insertion : {error}")
+        finally:
+            connection.close()
+
+    def _delete_categorized_transaction(self, raw_data_id: int):
+        """
+        Supprime la catégorisation d'une opération brute.
+        
+        La suppression dans 'categorized_operations' déclenche automatiquement 
+        le trigger SQL qui remet le champ 'processed' à 0 dans 'raw_data'.
+
+        Args:
+            - raw_data_id (int) : Identifiant technique de l'opération dans la table raw_data.
+        """
+        connection = sqlite3.connect(self._db_path)
+        # Activation des clés étrangères pour garantir l'exécution des triggers
+        connection.execute("PRAGMA foreign_keys = ON;")
+        cursor = connection.cursor()
+
+        try:
+            # On supprime la liaison uniquement
+            cursor.execute("""
+                DELETE FROM categorized_operations 
+                WHERE raw_data_id = ?
+            """, (raw_data_id,))
+            
+            connection.commit()
+            
+        except sqlite3.Error as error:
+            # En cas d'échec, on annule les modifications
+            connection.rollback()
+            raise RuntimeError(f"Erreur lors de la suppression de la catégorisation {raw_data_id} : {error}")
+            
+        finally:
+            connection.close()
+
+
+    # --- [ Configuration ] ---
+    def __create_database_schema(self):
+        """
+        Crée le schéma SQLite optimisé avec index et triggers automatiques.
+        """
+        connection = sqlite3.connect(self._db_path)
+        cursor = connection.cursor()
+
+        # Activation impérative des clés étrangères
+        cursor.execute("PRAGMA foreign_keys = ON;")
+
+        # --- [ Tables, Index et Triggers ] ---
+        cursor.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE
+                name TEXT UNIQUE NOT NULL
             );
-        """)
 
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS sub_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_id INTEGER,
-                name TEXT UNIQUE,
-                FOREIGN KEY (category_id) REFERENCES categories(id)
+                category_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+                UNIQUE(category_id, name)
             );
-        """)
 
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS raw_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 operation_date TEXT NOT NULL,
@@ -401,89 +488,89 @@ class BnpParibasDatabase(BaseDatabase):
                 amount REAL NOT NULL,
                 processed INTEGER DEFAULT 0
             );
-        """)
 
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS categorized_operations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_id INTEGER,
-                sub_category_id INTEGER,
-                raw_data_id INTEGER,
-                operation_date TEXT,
-                short_label TEXT,
-                operation_type TEXT,
-                full_label TEXT,
-                amount REAL,
+                raw_data_id INTEGER UNIQUE NOT NULL,
+                category_id INTEGER NOT NULL,
+                sub_category_id INTEGER NOT NULL,
+                FOREIGN KEY (raw_data_id) REFERENCES raw_data(id) ON DELETE CASCADE,
                 FOREIGN KEY (category_id) REFERENCES categories(id),
-                FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id),
-                FOREIGN KEY (raw_data_id) REFERENCES raw_data(id)
+                FOREIGN KEY (sub_category_id) REFERENCES sub_categories(id)
             );
+
+            -- --- [ Indexation ] ---
+                             
+            CREATE INDEX IF NOT EXISTS idx_categorized_cat ON categorized_operations(category_id);
+            CREATE INDEX IF NOT EXISTS idx_categorized_sub ON categorized_operations(sub_category_id);
+            CREATE INDEX IF NOT EXISTS idx_raw_processed ON raw_data(processed);
+
+            -- --- [ Triggers Automatiques ] ---
+                             
+            -- Activation du flag processed à l'insertion
+            CREATE TRIGGER IF NOT EXISTS trg_after_insert_categorization
+            AFTER INSERT ON categorized_operations
+            BEGIN
+                UPDATE raw_data SET processed = 1 WHERE id = new.raw_data_id;
+            END;
+
+            -- Désactivation du flag processed à la suppression
+            CREATE TRIGGER IF NOT EXISTS trg_after_delete_categorization
+            AFTER DELETE ON categorized_operations
+            BEGIN
+                UPDATE raw_data SET processed = 0 WHERE id = old.raw_data_id;
+            END;
+
+            -- Gestion du flag processed en cas de mise à jour du lien
+            CREATE TRIGGER IF NOT EXISTS trg_after_update_categorization
+            AFTER UPDATE OF raw_data_id ON categorized_operations
+            BEGIN
+                UPDATE raw_data SET processed = 0 WHERE id = old.raw_data_id;
+                UPDATE raw_data SET processed = 1 WHERE id = new.raw_data_id;
+            END;
         """)
 
         connection.commit()
         connection.close()
-
-    def __insert_default_categories(self):
-        """
-		Ajoute les catégories et sous-catégories définies en configuration
-		dans la base de données si elles n'existent pas déjà.
-		"""
-        connection = sqlite3.connect(self._db_path)
-        cursor = connection.cursor()
-
-        for category, sub_list in self._BUTTON_LABELS.items():
-            cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (category,))
-            cursor.execute("SELECT id FROM categories WHERE name = ?", (category,))
-            category_id = cursor.fetchone()[0]
-
-            for sub_category in sub_list:
-                cursor.execute(
-                    "INSERT OR IGNORE INTO sub_categories (name, category_id) VALUES (?, ?)",
-                    (sub_category, category_id)
-                )
-
-        connection.commit()
-        connection.close()
-
+    
     def __verify_category_consistency(self):
         """
-        Vérifie que toutes les catégories et sous-catégories présentes dans la BDD
-        existent dans self._BUTTON_LABELS .
-
-        Si une catégorie ou sous-catégorie n'existe plus :
-            - supprimer les lignes dans operations_categorisees
-            - remettre traite = 0 dans donnees_brutes
-            - supprimer la catégorie ou sous-catégorie dans la BDD
+        Vérifie la conformité des catégories en BDD avec le dictionnaire de référence.
+        
+        Si une catégorie/sous-catégorie n'est plus dans le dictionnaire, elle est
+        supprimée. La cascade et les triggers SQL s'occupent de remettre les 
+        transactions liées en état "non traité" (processed = 0).
         """
         connection = sqlite3.connect(self._db_path)
+        # Indispensable pour que le CASCADE et les Triggers s'activent
+        connection.execute("PRAGMA foreign_keys = ON;")
         cursor = connection.cursor()
 
-        allowed_categories = set(self._BUTTON_LABELS.keys())
-        allowed_sub_categories = set()
-        for _, sub_list in self._BUTTON_LABELS.items():
-            allowed_sub_categories.update(sub_list)
-
+        # 1. Nettoyage des Catégories Parentes
+        allowed_categories = set(self._categories_labels.keys())
         cursor.execute("SELECT id, name FROM categories")
         db_categories = cursor.fetchall()
 
-        cursor.execute("SELECT id, name FROM sub_categories")
+        for category_id, category_name in db_categories:
+            if category_name not in allowed_categories:
+                # On supprime juste la catégorie. 
+                # Le CASCADE supprime la liaison, le TRIGGER libère la donnée brute.
+                cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+
+        # 2. Nettoyage des Sous-Catégories (Cohérence Parent-Enfant)
+        cursor.execute("""
+            SELECT sc.id, sc.name, c.name 
+            FROM sub_categories sc
+            JOIN categories c ON sc.category_id = c.id
+        """)
         db_sub_categories = cursor.fetchall()
 
-        def cleanup_field(field_name: str, field_id: int):
-            cursor.execute(f"SELECT raw_data_id FROM categorized_operations WHERE {field_name} = ?", (field_id,))
-            raw_ids = cursor.fetchall()
-            for (r_id,) in raw_ids:
-                cursor.execute("UPDATE raw_data SET processed = 0 WHERE id = ?", (r_id,))
-            cursor.execute(f"DELETE FROM categorized_operations WHERE {field_name} = ?", (field_id,))
-
-        for cat_id, cat_name in db_categories:
-            if cat_name not in allowed_categories:
-                cleanup_field("category_id", cat_id)
-                cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
-
-        for sub_id, sub_name in db_sub_categories:
-            if sub_name not in allowed_sub_categories:
-                cleanup_field("sub_category_id", sub_id)
+        for sub_id, sub_name, parent_name in db_sub_categories:
+            is_valid = (parent_name in self._categories_labels and 
+                        sub_name in self._categories_labels[parent_name])
+            
+            if not is_valid:
+                # Même logique : la suppression déclenche la libération automatique
                 cursor.execute("DELETE FROM sub_categories WHERE id = ?", (sub_id,))
 
         connection.commit()

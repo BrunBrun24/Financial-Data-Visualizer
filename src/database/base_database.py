@@ -62,24 +62,61 @@ class BaseDatabase:
 
     def _get_table_data(self, table_name: str) -> pd.DataFrame:
         """
-        Récupère l'intégralité du contenu d'une table.
+        Récupère le contenu d'une table en résolvant les pointeurs si nécessaire.
+
+        Si la table demandée est 'categorized_operations', une jointure est effectuée
+        pour transformer les IDs en valeurs lisibles.
 
         Args:
-        - table_name (str) : Nom de la table à interroger.
+            - table_name (str) : Nom de la table à interroger.
 
         Returns:
-        - pd.DataFrame : Un DataFrame contenant toutes les lignes de la table.
+            - pd.DataFrame : DataFrame contenant les données (résolues ou brutes).
         """
         assert isinstance(table_name, str), "Le nom de la table doit être une chaîne."
 
+        # Définition des requêtes spécifiques pour résoudre les pointeurs
+        # On utilise des alias (AS) pour éviter les collisions de noms
+        queries = {
+            "categorized_operations": """
+                SELECT 
+                    co.id AS entry_id,
+                    c.name AS category_name,
+                    sc.name AS sub_category_name,
+                    r.operation_date,
+                    r.short_label,
+                    r.operation_type,
+                    r.full_label,
+                    r.amount,
+                    r.id AS raw_id
+                FROM categorized_operations co
+                JOIN categories c ON co.category_id = c.id
+                JOIN sub_categories sc ON co.sub_category_id = sc.id
+                JOIN raw_data r ON co.raw_data_id = r.id
+            """,
+            "sub_categories": """
+                SELECT 
+                    sc.id,
+                    c.name AS parent_category,
+                    sc.name AS sub_category_name
+                FROM sub_categories sc
+                JOIN categories c ON sc.category_id = c.id
+            """
+        }
+
+        # On choisit la requête : soit une requête complexe définie au-dessus, 
+        # soit un SELECT * classique par défaut.
+        sql_query = queries.get(table_name, f"SELECT * FROM {table_name}")
+
         try:
             connection = sqlite3.connect(self._db_path)
-            # Lecture directe de la table vers un DataFrame
-            dataframe = pd.read_sql_query(f"SELECT * FROM {table_name}", connection)
+            dataframe = pd.read_sql_query(sql_query, connection)
             connection.close()
+            
             return dataframe
-        except Exception as e:
-            print(f"Erreur lors de la lecture de la table {table_name}: {e}")
+        
+        except Exception as error:
+            print(f"Erreur lors de la lecture de la table {table_name}: {error}")
             return pd.DataFrame()
 
 
