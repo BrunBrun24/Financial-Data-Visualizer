@@ -165,6 +165,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
 
         # Ajout du tableau (style: None pour garder vos formats)
         ws.add_table(0, 0, last_row, last_col, {
+            'name': 'TableGainsRealises',
             'data': table_data,
             'columns': [{'header': h, 'header_format': fmt['header']} for h in headers],
             'style': None  # CRUCIAL : empêche Excel d'écraser vos couleurs
@@ -214,6 +215,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
         last_row = len(table_rows)
         
         ws.add_table(0, 0, last_row, 4, {
+            'name': 'TableSummary',
             'data': table_rows,
             'columns': [{'header': h, 'header_format': fmt['header']} for h in headers],
             'style': None,
@@ -268,7 +270,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
 
         headers = ["Ticker", "Total Dividendes", "Détention (Jours)", "PRU Actuel"]
         ws.add_table(0, 0, len(performance_list), 3, {
-            'name': 'PerfTable',
+            'name': 'TableSyntheseAnnuelle',
             'data': performance_list,
             'columns': [{'header': h, 'header_format': fmt['header']} for h in headers],
             'style': 'Table Style Light 9'

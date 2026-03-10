@@ -49,6 +49,16 @@ class WealthDashboard:
         pie_cfg = self.__get_distribution_pie_config(data_map)
         liquidity_cfg = self.__get_liquidity_config(data_map)
         fire_gauge = self.__get_fire_gauge_config(data_map)
+        
+        js_files = ["src/static/js/highstock.js", "src/static/js/highcharts-more.js", "src/static/js/solid-gauge.js"]
+        js_content = ""
+
+        for js_file in js_files:
+            try:
+                with open(js_file, "r", encoding="utf-8") as f:
+                    js_content += f"\n/* --- Source: {js_file} --- */\n{f.read()}"
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Erreur de concaténation : {js_file} est manquant.")
 
         # Construction du template HTML
         html_template = f"""
@@ -56,9 +66,7 @@ class WealthDashboard:
         <html lang="fr">
         <head>
             <meta charset="UTF-8">
-            <script src="https://code.highcharts.com/stock/highstock.js"></script>
-            <script src="https://code.highcharts.com/highcharts-more.js"></script>
-            <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+            <script>{js_content}</script>
             
             <style>
                 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background-color: #f0f2f5; color: #333; }}

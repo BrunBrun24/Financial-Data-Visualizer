@@ -81,7 +81,7 @@ def process_trade_republic(db_path: str, root_path: str):
     visualizer.generate_performance_report()
 
     excel_generator = TradeRepublicExcelReportGenerator(db_path, root_path)
-    excel_generator.generate_global_report()
+    excel_generator.generate_investment_report()
 
 def main():
     """

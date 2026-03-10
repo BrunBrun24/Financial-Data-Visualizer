@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sqlite3
 
@@ -161,7 +162,5 @@ class BaseDatabase:
         Returns:
             str : Un hash unique représentant la ligne.
         """
-        import hashlib
-        # Concaténation des valeurs clés pour créer une empreinte unique
         raw_string = f"{row.get('date_operation', '')}{row.get('libelle_operation', '')}{row.get('montant', '')}"
-        return hashlib.md5(raw_string.encode()).hexdigest()
+        return hashlib.sha256(raw_string.encode()).hexdigest()

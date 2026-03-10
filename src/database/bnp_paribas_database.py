@@ -38,6 +38,7 @@ class BnpParibasDatabase(BaseDatabase):
                 "Revenus de placement", "Pensions", "Intérêts", "Loyers", 
                 "Remboursement", "Chèques reçus", "Déblocage emprunt", 
                 "Virements reçus", "Virements internes", "Cashback",
+                "Remboursement amis"
             ],
             'Abonnement': ["FAI", "Streaming", "Logiciels", "Musiques", "Assurance habitation", 
                         "Assurance véhicule", "Assurance Bancaire", 'Abonnements partagés'],
@@ -90,7 +91,8 @@ class BnpParibasDatabase(BaseDatabase):
                 'Aides financières', 'Cadeaux - Petits plaisirs', 'Restaurants - Nourritures',
                 'Voyages - week-ends', 'Loisirs - activités'
             ],
-            'Parents': ['Aides']
+            'Parents': ['Aides'],
+            'Argent': ['Argent prêter'],
         }
         
         self.__create_database_schema()

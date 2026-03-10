@@ -319,9 +319,9 @@ class OperationCategorizer(BnpParibasDatabase):
             return False
 
         elif (
-            short_label in ["VIREMENT PERMANENT", "VIREMENT INSTANTANE RECU"] or
+            short_label == "VIREMENT PERMANENT" or
             full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL" or 
-            full_label in ["DE AUBRUN /MOTIF VIREMENT PAUL", "VIREMENT INSTANTANE RECU"]
+            full_label == "DE AUBRUN /MOTIF VIREMENT PAUL"
         ):
             self._save_categorized_transaction(row, "Revenus", "Virements reçus")
             return False

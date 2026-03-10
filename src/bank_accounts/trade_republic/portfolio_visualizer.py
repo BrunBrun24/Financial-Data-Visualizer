@@ -144,6 +144,16 @@ class PortfolioVisualizer(TradeRepublicDatabase):
 
         # Extraction des noms de métriques pour le menu déroulant dynamique
         ticker_metrics = sorted(list(set([c['metric'] for c in all_charts_config if c['is_ticker']])))
+        
+        js_files = ["src/static/js/highcharts.js"]
+        js_content = ""
+
+        for js_file in js_files:
+            try:
+                with open(js_file, "r", encoding="utf-8") as f:
+                    js_content += f"\n/* --- Source: {js_file} --- */\n{f.read()}"
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Erreur de concaténation : {js_file} est manquant.")
 
         # Assemblage du template HTML
         html_output = f"""
@@ -152,7 +162,7 @@ class PortfolioVisualizer(TradeRepublicDatabase):
         <head>
             <meta charset="UTF-8">
             <title>Performance Portefeuille</title>
-            <script src="https://code.highcharts.com/highcharts.js"></script>
+            <script>{js_content}</script>
             <style>
                 body {{ font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }}
                 h1 {{ text-align: center; color: #2c3e50; }}

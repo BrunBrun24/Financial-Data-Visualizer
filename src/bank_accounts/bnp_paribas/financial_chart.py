@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 
 import pandas as pd
@@ -1080,30 +1081,24 @@ class FinancialChart(BnpParibasDatabase):
     def __generate_html_file(self, df_all: pd.DataFrame):
         """
         Assemble et compile l'ensemble des visualisations dans un document HTML unique.
-
-        Cette méthode agit comme le moteur de rendu principal. Elle construit la structure 
-        du document (DOM), importe les bibliothèques JavaScript nécessaires (Highcharts Core, 
-        Sankey et Exporting) et concatène les sorties des différentes méthodes de génération 
-        de graphiques.
-
-        L'ordre d'affichage dans le document est le suivant :
-        1. Analyse Financière (Histogramme comparatif avec épargne nette).
-        2. Évolution Revenus/Dépenses (Graphique avec switch interactif).
-        3. Flux de trésorerie (Diagramme de Sankey).
-
-        Args:
-            df_all (pd.DataFrame): Le jeu de données complet contenant les transactions 
-                                   nécessaires à l'alimentation des trois modules graphiques.
         """
-        html = """
+        js_files = ["src/static/js/highcharts.js", "src/static/js/sankey.js", "src/static/js/exporting.js"]
+        js_content = ""
+
+        for js_file in js_files:
+            try:
+                with open(js_file, "r", encoding="utf-8") as f:
+                    js_content += f"\n/* --- Source: {js_file} --- */\n{f.read()}"
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Erreur de concaténation : {js_file} est manquant.")
+
+        html = f"""
             <!DOCTYPE html>
             <html>
             <head>
             <meta charset="utf-8">
-            <title>Graphiques</title>
-            <script src="https://code.highcharts.com/highcharts.js"></script>
-            <script src="https://code.highcharts.com/modules/sankey.js"></script>
-            <script src="https://code.highcharts.com/modules/exporting.js"></script>
+            <title>Graphiques Financiers</title>
+            <script>{js_content}</script>
             </head>
             <body>
         """
