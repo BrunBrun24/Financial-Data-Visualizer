@@ -51,9 +51,7 @@ class ExecutionDateValidator:
         return self.__data
 
     def __display_next_step(self):
-        """
-        Détermine si une nouvelle date doit être affichée ou si le processus est fini.
-        """
+        """Détermine si une nouvelle date doit être affichée ou si le processus est fini"""
         if self.__index < len(self.__unique_dates):
             current_date = self.__unique_dates[self.__index]
             # Filtrage des tickers associés à la date actuelle
@@ -64,25 +62,16 @@ class ExecutionDateValidator:
             self.__root.destroy()
 
     def __process_confirmation(self):
-        """
-        Passe à la date suivante après validation positive.
-        """
+        """Passe à la date suivante après validation positive"""
         self.__index += 1
         self.__display_next_step()
 
     def __process_correction(self, original_date: datetime):
-        """
-        Ouvre un dialogue pour corriger la date avant de passer à la suivante.
-
-        Args:
-            original_date (datetime): La date initiale avant correction.
-        """
+        """Ouvre un dialogue pour corriger la date avant de passer à la suivante"""
         current_date_ref = self.__unique_dates[self.__index]
 
         while True:
-            # Format par défaut pour l'input
-            default_val = original_date.strftime("%Y-%m-%d") if hasattr(original_date, 'strftime') else str(original_date)
-            
+            default_val = original_date.strftime("%Y-%m-%d") if hasattr(original_date, 'strftime') else str(original_date)            
             user_input = simpledialog.askstring(
                 "Correction",
                 "Entrez la date (YYYY-MM-DD) :",
@@ -107,9 +96,7 @@ class ExecutionDateValidator:
         self.__display_next_step()
 
     def __setup_window_geometry(self):
-        """
-        Calcule et applique le centrage de la fenêtre sur l'écran.
-        """
+        """Calcule et applique le centrage de la fenêtre sur l'écran"""
         width, height = 1250, 650
         screen_w = self.__root.winfo_screenwidth()
         screen_h = self.__root.winfo_screenheight()
@@ -192,8 +179,6 @@ class ExecutionDateValidator:
             )
 
     def __clear_layout(self):
-        """
-        Supprime tous les widgets existants dans la fenêtre avant de redessiner.
-        """
+        """Supprime tous les widgets existants dans la fenêtre avant de redessiner"""
         for widget in self.__root.winfo_children():
             widget.destroy()

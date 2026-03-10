@@ -28,9 +28,6 @@ class ExcelDataExtractor:
     def run_extraction(self) -> (pd.DataFrame | None):
         """
         Lance le processus complet : interface de sélection puis extraction.
-        
-        Returns:
-            - pd.DataFrame : Données fusionnées et nettoyées, ou None.
         """
         self.__open_selection_window()
         
@@ -56,9 +53,7 @@ class ExcelDataExtractor:
 
     # --- [ Gestion de l'Interface ] ---
     def __open_selection_window(self):
-        """
-        Crée et affiche la fenêtre Tkinter pour la sélection des fichiers.
-        """
+        """Crée et affiche la fenêtre Tkinter pour la sélection des fichiers."""
         root = tk.Tk()
         root.title("Sélection des fichiers")
         self._setup_window_geometry(root, 400, 200)
@@ -83,14 +78,7 @@ class ExcelDataExtractor:
         root.mainloop()
 
     def _setup_window_geometry(self, window: tk.Tk, width: int, height: int):
-        """
-        Centre une fenêtre Tkinter à l'écran.
-        
-        Args:
-            - window (tk.Tk) : Fenêtre à centrer.
-            - width (int) : Largeur.
-            - height (int) : Hauteur.
-        """
+        """Centre une fenêtre Tkinter à l'écran."""
         screen_width = window.winfo_screenwidth()
         screen_height = window.winfo_screenheight()
         pos_x = (screen_width // 2) - (width // 2)
@@ -100,16 +88,7 @@ class ExcelDataExtractor:
 
     # --- [ Extraction & Traitement ] ---
     def _extract_file_data(self, file_path: str, extension: str) -> (pd.DataFrame | None):
-        """
-        Extrait les données brutes d'un fichier spécifique.
-        
-        Args:
-            - file_path (str) : Chemin du fichier.
-            - extension (str) : Extension détectée.
-            
-        Returns:
-            - pd.DataFrame : DataFrame formaté ou None en cas d'erreur.
-        """
+        """Extrait les données brutes d'un fichier spécifique."""
         try:
             if extension == ".xls":
                 data = []
@@ -141,18 +120,8 @@ class ExcelDataExtractor:
             return None
 
     def _extract_csv_data(self, file_path: str) -> (pd.DataFrame | None):
-        """
-        Extrait les données brutes d'un fichier csv.
-        
-        Args:
-            - file_path (str) : Chemin du fichier.
-            - extension (str) : Extension détectée.
-            
-        Returns:
-            - pd.DataFrame : DataFrame formaté ou None en cas d'erreur.
-        """
+        """Extrait les données brutes d'un fichier csv."""
         try:
-            # Lecture avec gestion du séparateur et de la virgule décimale
             df = pd.read_csv(
                 file_path, 
                 sep=';', 
@@ -171,16 +140,10 @@ class ExcelDataExtractor:
             df = df.iloc[:, 0:5]
             df.columns = ["date_operation", "libelle_court", "type_operation", "libelle_operation", "montant"]
 
-            # Conversion forcée en numérique pour éviter les NULL
             df["montant"] = pd.to_numeric(df["montant"], errors='coerce')
-            
-            # Suppression des lignes où le montant n'a pas pu être converti (évite l'IntegrityError)
             df = df.dropna(subset=["montant"])
-
-            # Conversion de la date
             df["date_operation"] = pd.to_datetime(df["date_operation"], dayfirst=True)
 
-            # Application des règles métier
             self._apply_business_rules(df)
             
             return df
@@ -190,15 +153,7 @@ class ExcelDataExtractor:
             return None
 
     def _apply_business_rules(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Applique les transformations de nettoyage sur les libellés et les dates.
-        
-        Args:
-            - df (pd.DataFrame) : DataFrame à modifier.
-            
-        Returns:
-            - pd.DataFrame : DataFrame mis à jour.
-        """
+        """=Applique les transformations de nettoyage sur les libellés et les dates.="""
         for index, row in df.iterrows():
             libelle = str(row["libelle_operation"])
             
@@ -227,17 +182,13 @@ class ExcelDataExtractor:
 
     # --- [ Utilitaires de Formatage ] ---
     def _excel_date_to_datetime(self, excel_date: float) -> datetime:
-        """
-        Convertit un nombre Excel en objet datetime.
-        """
+        """Convertit un nombre Excel en objet datetime."""
         if not isinstance(excel_date, (int, float)):
             return excel_date
         return datetime(1899, 12, 30) + timedelta(days=excel_date)
 
     def __extract_between_slashes(self, text: str, start: int, end: int) -> str:
-        """
-        Extrait le texte situé entre des slashs selon les indices fournis.
-        """
+        """Extrait le texte situé entre des slashs selon les indices fournis."""
         slash_positions = [i for i, char in enumerate(text) if char == '/']
 
         if end == 0 and slash_positions:
@@ -249,9 +200,7 @@ class ExcelDataExtractor:
         return text
 
     def __extract_date_from_libelle(self, libelle: str) -> (tuple[datetime, str] | tuple[None, None]):
-        """
-        Extrait une date jj/mm/aa après le mot clé 'DU'.
-        """
+        """Extrait une date jj/mm/aa après le mot clé 'DU'."""
         if "DU" in libelle:
             try:
                 start_index = libelle.find("DU") + 3
@@ -264,9 +213,7 @@ class ExcelDataExtractor:
         return None, None
 
     def __clean_libelle_spacing(self, libelle: str) -> str:
-        """
-        Supprime le contenu après un double espace.
-        """
+        """Supprime le contenu après un double espace."""
         double_space_index = libelle.find("  ")
         if double_space_index != -1:
             return libelle[:double_space_index].strip()

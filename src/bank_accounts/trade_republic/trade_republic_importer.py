@@ -5,6 +5,7 @@ from datetime import date, datetime
 from difflib import SequenceMatcher
 
 import pandas as pd
+import pdfplumber
 
 from bank_accounts.trade_republic.execution_date_validator import (
     ExecutionDateValidator,
@@ -117,13 +118,11 @@ class TradeRepublicImporter(TradeRepublicDatabase):
         Lance le cycle complet : importation des nouveaux fichiers, 
         renommage physique et extraction des données financières.
         """
-        # 1. Scanner et importer les fichiers PDF (renommage inclus)
+        # Scanner et importer les fichiers PDF (renommage inclus)
         self.__import_all_pdfs()
-
-        # 2. Traiter les fichiers non marqués comme 'processed' dans la base
+        # Traiter les fichiers non marqués comme 'processed' dans la base
         self.__process_unprocessed_files()
-
-        # 3 Mets à jour les données dans les différentes tables pour chaque ticker
+        # Mets à jour les données dans les différentes tables pour chaque ticker
         tickers = self._get_all_company_tickers() + ['EURUSD=X']
         self._fetch_and_update_companies(tickers)
 
@@ -745,8 +744,6 @@ class TradeRepublicImporter(TradeRepublicDatabase):
         Raises:
             RuntimeError: Si le document ne peut pas être ouvert ou analysé.
         """
-        import pdfplumber
-
         try:
             full_text = ''
             

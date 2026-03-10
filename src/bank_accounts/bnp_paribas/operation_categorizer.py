@@ -381,15 +381,6 @@ class OperationCategorizer(BnpParibasDatabase):
 
     # --- [ Utilitaires de Formatage ] ---
     def __normalize_text(self, text: str) -> str:
-        """
-        Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules.
-        
-        Utile pour le tri alphabétique correct (ex: 'Épargne' traité comme 'epargne').
-
-        Args:
-            - text (str) : La chaîne à normaliser.
-        Returns:
-            - str : La chaîne normalisée.
-        """
+        """Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules"""
         normalized = unicodedata.normalize('NFD', text)
         return "".join(c for c in normalized if unicodedata.category(c) != 'Mn').lower()

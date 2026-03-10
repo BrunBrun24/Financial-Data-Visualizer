@@ -47,12 +47,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
 
     # --- [ Analyse des Plus-values ] ---
     def __get_capital_gains_data(self) -> pd.DataFrame:
-        """
-        Calcule les plus-values réelles en suivant l'état des stocks d'actions.
-        
-        Returns:
-            - pd.DataFrame : Détail des ventes avec la plus-value exacte.
-        """
+        """Calcule les plus-values réelles en suivant l'état des stocks d'actions."""
         df = self._get_transactions_in_eur()
         df = df.sort_index()  # Tri chronologique obligatoire
 
@@ -78,13 +73,13 @@ class ExcelReportGenerator(TradeRepublicDatabase):
                 invested_amounts[ticker] += (amount + fees)
                 
             elif row['operation'] == 'sell' and stock_quantities[ticker] > 0:
-                # 1. Calcul du PRU (Prix de Revient Unitaire) avant la vente
+                # Calcul du PRU (Prix de Revient Unitaire) avant la vente
                 pru_unitaire = invested_amounts[ticker] / stock_quantities[ticker]
                 
-                # 2. Coût d'acquisition de la part vendue
+                # Coût d'acquisition de la part vendue
                 acquisition_cost = pru_unitaire * qty
                 
-                # 3. Plus-value = Argent reçu - Coût d'acquisition - Frais de vente
+                # Plus-value = Argent reçu - Coût d'acquisition - Frais de vente
                 # amount ici est l'argent récupéré (V)
                 gain = amount - acquisition_cost - fees
                 
@@ -98,11 +93,11 @@ class ExcelReportGenerator(TradeRepublicDatabase):
                     'net_gain': gain
                 })
                 
-                # 4. Mise à jour du stock restant
+                # Mise à jour du stock restant
                 stock_quantities[ticker] -= qty
                 invested_amounts[ticker] -= acquisition_cost
                 
-                # 5. Sécurité : Si tout est vendu, on nettoie pour éviter les résidus flottants
+                # Sécurité : Si tout est vendu, on nettoie pour éviter les résidus flottants
                 if stock_quantities[ticker] <= 0:
                     stock_quantities[ticker] = 0
                     invested_amounts[ticker] = 0
@@ -112,30 +107,21 @@ class ExcelReportGenerator(TradeRepublicDatabase):
 
     # --- [ Génération du Rapport ] ---
     def generate_investment_report(self):
-        """
-        Génère le fichier Excel multi-feuilles de suivi d'investissement.
-        """
+        """Génère le fichier Excel multi-feuilles de suivi d'investissement"""
         file_path = os.path.join(self.__root_path, "Bilan_Investissements.xlsx")
         os.makedirs(self.__root_path, exist_ok=True)
         
         wb = xlsxwriter.Workbook(file_path)
         fmt = self.__get_formats(wb)
 
-        # 1. Plus-values (Détail des ventes)
         self.__add_gains_sheet(wb, fmt)
-        
-        # 2. Performance & Dividendes (Calcul par action)
         self.__add_performance_dividend_sheet(wb, fmt)
-        
-        # 3. Flux Annuels (Synthèse temporelle)
         self.__add_annual_summary_sheet(wb, fmt)
 
         wb.close()
 
     def __add_gains_sheet(self, wb, fmt: dict):
-        """
-        Ajoute la feuille de détail des plus-values avec un tableau Excel.
-        """
+        """Ajoute la feuille de détail des plus-values avec un tableau Excel"""
         ws = wb.add_worksheet("Plus-values Réalisées")
         data = self.__get_capital_gains_data()
 
@@ -163,15 +149,14 @@ class ExcelReportGenerator(TradeRepublicDatabase):
         last_row = len(table_data)
         last_col = len(headers) - 1
 
-        # Ajout du tableau (style: None pour garder vos formats)
+        # Ajout du tableau
         ws.add_table(0, 0, last_row, last_col, {
             'name': 'TableGainsRealises',
             'data': table_data,
             'columns': [{'header': h, 'header_format': fmt['header']} for h in headers],
-            'style': None  # CRUCIAL : empêche Excel d'écraser vos couleurs
+            'style': None
         })
 
-        # --- [ Application des formats sur les colonnes de données ] ---
         # On repasse sur les cellules pour appliquer les formats monétaires et conditionnels
         for row_idx in range(1, last_row + 1):
             val_gain = table_data[row_idx-1][6]
@@ -189,9 +174,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
         ws.set_column('A:G', 16)
 
     def __add_annual_summary_sheet(self, wb, fmt: dict):
-        """
-        Ajoute la feuille de résumé annuel sous forme de tableau Excel.
-        """
+        """Ajoute la feuille de résumé annuel sous forme de tableau Excel"""
         ws = wb.add_worksheet("Synthèse Annuelle")
         df = self._get_transactions_in_eur()
         
@@ -203,7 +186,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
             investi=('val_buy', 'sum'),
             retire=('val_sell', 'sum'),
             frais=('fees', 'sum')
-        ).reset_index() # Reset index pour avoir l'année en colonne de données
+        ).reset_index()
 
         headers = ["Année", "Total Investi", "Total Retiré", "Frais Payés", "Évolution %"]
         
@@ -238,9 +221,7 @@ class ExcelReportGenerator(TradeRepublicDatabase):
         ws.set_column('A:E', 18)
 
     def __add_performance_dividend_sheet(self, wb, fmt: dict):
-        """
-        Ajoute la feuille de performance globale par actif (PRU, Div, Détention).
-        """
+        """Ajoute la feuille de performance globale par actif (PRU, Div, Détention)"""
         ws = wb.add_worksheet("Performance & Dividendes")
         df = self._get_transactions_in_eur()
         if df.empty:

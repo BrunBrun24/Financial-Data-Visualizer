@@ -19,7 +19,7 @@ class BaseDatabase:
         Initialise la connexion et crée le dossier parent si nécessaire.
 
         Args:
-        - db_path (str) : Chemin complet vers le fichier de base de données .db
+        - db_path (str) : Chemin complet vers le fichier de base de données
         """
         self._db_path = db_path
         
@@ -105,8 +105,6 @@ class BaseDatabase:
             """
         }
 
-        # On choisit la requête : soit une requête complexe définie au-dessus, 
-        # soit un SELECT * classique par défaut.
         sql_query = queries.get(table_name, f"SELECT * FROM {table_name}")
 
         try:

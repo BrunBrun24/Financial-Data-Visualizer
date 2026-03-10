@@ -23,7 +23,6 @@ def upgrade_account(db_path: str, save_file_path: str, initial_dir: str):
         - save_file_path (str) : Dossier de destination pour les rapports générés.
         - initial_dir (str) : Dossier contenant les fichiers Excel sources.
     """
-    # Extraction des données Excel
     data_extractor = ExcelDataExtractor(initial_dir)
     data = data_extractor.run_extraction()
     
@@ -31,7 +30,6 @@ def upgrade_account(db_path: str, save_file_path: str, initial_dir: str):
         db = BnpParibasDatabase(db_path)
         db.add_raw_data(data)
 
-    # Catégorisation et génération des rapports visuels et Excel
     categorizer = OperationCategorizer(db_path)
     categorizer.categorize()
     
@@ -51,7 +49,6 @@ def process_bnp_paribas_global(db_path: str, source_db_path: str, target_db_path
         - target_db_path (str) : Chemin de la deuxième base source.
         - save_file_path (str) : Dossier de destination pour les rapports.
     """
-    # Fusion des bases de données de différents comptes
     BnpParibasDatabase.merge_bank_databases(source_db_path, target_db_path, db_path)
     
     chart_generator = FinancialChart(db_path, save_file_path)
@@ -68,15 +65,12 @@ def process_trade_republic(db_path: str, root_path: str):
         - db_path (str) : Chemin vers la base de données bourse.
         - root_path (str) : Dossier racine pour la sauvegarde des bilans.
     """
-    # Processus d'importation Trade Republic
     importer = TradeRepublicImporter(db_path)
     importer.run_full_import_process()
 
-    # Calcul de la performance du portefeuille
     performance_engine = PortfolioPerformance(db_path)
     performance_engine.calculate_performance()
 
-    # Visualisation et rapport Excel
     visualizer = PortfolioVisualizer(db_path, root_path)
     visualizer.generate_performance_report()
 
@@ -84,18 +78,16 @@ def process_trade_republic(db_path: str, root_path: str):
     excel_generator.generate_investment_report()
 
 def main():
-    """
-    Point d'entrée principal de l'application de gestion de patrimoine.
-    """
-    # --- [ Configuration BNP Paribas ] ---
+    """Point d'entrée principal de l'application de gestion de patrimoine"""
+    # Configuration BNP Paribas
     upgrade_account("data/bnp paribas/compte chèques/compte chèques.db", "Bilan/Bnp Paribas/Compte Chèques/", "data/bnp paribas/Compte Chèques/")
     upgrade_account("data/bnp paribas/livret A/livret A.db", "Bilan/Bnp Paribas/Livret A/", "data/bnp paribas/livret A/")
     process_bnp_paribas_global("data/bnp paribas/all/all.db", "data/bnp paribas/compte chèques/compte chèques.db", "data/bnp paribas/livret A/livret A.db", "Bilan/Bnp Paribas/All/")
 
-    # --- [ Configuration Trade Republic ] ---
+    # Configuration Trade Republic
     process_trade_republic("data/bourse/Trade Republic.db", "Bilan/Trade Repubic/")
 
-    # --- [ Dashboard de Patrimoine Global ] ---
+    # Dashboard de Patrimoine Global
     wealth_engine = WealthDashboard(
         "data/bnp paribas/compte chèques/compte chèques.db", 
         "data/bnp paribas/livret A/livret A.db", 

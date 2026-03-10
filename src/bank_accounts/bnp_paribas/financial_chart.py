@@ -75,14 +75,7 @@ class FinancialChart(BnpParibasDatabase):
     
     # --- [ Production des Bilans ] ---
     def __generate_annual_report(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
-        """
-        Crée les graphiques pour le bilan annuel selon la présence de revenus et/ou dépenses.
-
-        Args :
-            df_revenus (pd.DataFrame) : DataFrame des opérations de revenus.
-            df_depenses (pd.DataFrame) : DataFrame des opérations de dépenses.
-            df_all (pd.DataFrame) : DataFrame complet des opérations (revenus + dépenses).
-        """
+        """Crée les graphiques pour le bilan annuel selon la présence de revenus et/ou dépenses."""
 
         if (not df_revenus.empty) and (not df_depenses.empty):
             self.__compte_courant_income_expenses(df_revenus, df_depenses, df_all)
@@ -120,49 +113,35 @@ class FinancialChart(BnpParibasDatabase):
         """
         Génère et organise les graphiques pour un compte courant avec revenus et dépenses.
 
-        Args :
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations de revenus.
-            df_depenses (pd.DataFrame) : DataFrame contenant les opérations de dépenses.
-            df_all (pd.DataFrame) : DataFrame combinant toutes les opérations (revenus + dépenses).
-
         Actions :
             - Crée un graphique Sankey pour l’ensemble des opérations.
             - Crée un histogramme empilé pour les dépenses.
             - Génère des graphiques circulaires des dépenses et des revenus,
-            en séparant éventuellement les sous-catégories spécifiques (Investissement, Épargne, Virements internes).
+                en séparant éventuellement les sous-catégories spécifiques (Investissement, Épargne, Virements internes).
             - Combine plusieurs graphiques côte à côte si nécessaire.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
         self.__generate_html_file(df_all)
 
-        # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement' ni "Épargne"
         df_filtre = df_depenses[
             (df_depenses['category'] != 'Investissement') &
             (df_depenses['category'] != 'Épargne')
         ]
-        # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
         if (df_depenses.equals(df_filtre)) or (df_filtre.empty):
             self.__create_pie_chart(df=df_depenses, name="Dépenses")
         else:
-            # Si les DataFrames ne sont pas identiques, créer deux graphiques
             fig_soleil_depenses = self.__create_pie_chart(df=df_filtre, name="Dépenses", save=False)
             fig_soleil = self.__create_pie_chart(df=df_depenses, name="Dépenses + Investissement", save=False)
         
-            # Création des graphiques dans l'ordre dans le fichier
             self.__create_combined_charts(fig_soleil_depenses, fig_soleil)
         
-        # Filtrer les lignes où la colonne 'sub_category' n'est pas 'Virements internes'
         df_filtre = df_revenus[df_revenus['sub_category'] != 'Virements internes']
-        # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
         if df_filtre.equals(df_revenus):
-            # Si les deux DataFrames sont identiques, créer un seul graphique
             self.__create_pie_chart(df=df_filtre, name="Revenus gagné")
         else:
-            # Si les DataFrames ne sont pas identiques, créer deux graphiques
             fig_soleil_revenus = self.__create_pie_chart(df=df_filtre, name="Revenus gagné", save=False)
             fig_soleil_all_revenus = self.__create_pie_chart(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
             
-            # Création des graphiques combinés dans l'ordre
             self.__create_combined_charts(fig_soleil_revenus, fig_soleil_all_revenus)
 
         self.__save_in_file()
@@ -170,9 +149,6 @@ class FinancialChart(BnpParibasDatabase):
     def __compte_courant_expenses(self, df_depenses: pd.DataFrame):
         """
         Génère et organise les graphiques pour un compte courant ne contenant que des dépenses.
-
-        Args :
-            df_depenses (pd.DataFrame) : DataFrame contenant les opérations de dépenses.
 
         Actions :
             - Crée un histogramme empilé pour les dépenses.
@@ -204,9 +180,6 @@ class FinancialChart(BnpParibasDatabase):
     def __compte_courant_income(self, df_revenus: pd.DataFrame):
         """
         Génère et organise les graphiques pour un compte courant contenant uniquement des revenus.
-
-        Args :
-            df_revenus (pd.DataFrame) : DataFrame contenant les opérations de revenus.
 
         Actions :
             - Génère un graphique circulaire des revenus gagnés, en séparant éventuellement les 'Virements internes'.
@@ -1079,9 +1052,7 @@ class FinancialChart(BnpParibasDatabase):
         return html
     
     def __generate_html_file(self, df_all: pd.DataFrame):
-        """
-        Assemble et compile l'ensemble des visualisations dans un document HTML unique.
-        """
+        """Assemble et compile l'ensemble des visualisations dans un document HTML unique."""
         js_files = ["src/static/js/highcharts.js", "src/static/js/sankey.js", "src/static/js/exporting.js"]
         js_content = ""
 
@@ -1123,12 +1094,9 @@ class FinancialChart(BnpParibasDatabase):
         Returns :
         - dict : dictionnaire { mois (str) : DataFrame des opérations de ce mois }
         """
-        # Extraction de l'année
         df_all["month"] = df_all["operation_date"].dt.strftime('%m')
-
         month_dict = {}
-
-        # Groupement par année
+        
         for year, df_annee in df_all.groupby("month"):
             month_dict[year] = df_annee.reset_index(drop=True)
 

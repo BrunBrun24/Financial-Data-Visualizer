@@ -283,8 +283,6 @@ class BnpParibasDatabase(BaseDatabase):
         """
         connection = sqlite3.connect(self._db_path)
         
-        # On utilise JOIN (ou LEFT JOIN) pour rassembler les données éparpillées
-        # La table 'categorized_operations' sert de pivot central.
         query = """
             SELECT 
                 r.id, 
@@ -302,11 +300,9 @@ class BnpParibasDatabase(BaseDatabase):
             ORDER BY r.operation_date ASC, r.id ASC
         """
 
-        # Utilisation de pandas pour lire directement le flux SQL
         df = pd.read_sql_query(query, connection)
         connection.close()
 
-        # Conversion de la date en objet datetime
         df["operation_date"] = pd.to_datetime(df["operation_date"])
             
         return df
@@ -327,15 +323,7 @@ class BnpParibasDatabase(BaseDatabase):
         return years_dict
 
     def __get_or_create_category_id(self, category_name: str) -> int:
-        """
-        Récupère l'identifiant d'une catégorie ou la crée si elle n'existe pas.
-
-        Args:
-            - category_name (str) : Le nom de la catégorie.
-        
-        Returns:
-            - int : L'identifiant technique (ID) de la catégorie.
-        """
+        """Récupère l'identifiant d'une catégorie ou la crée si elle n'existe pas"""
         connection = sqlite3.connect(self._db_path)
         cursor = connection.cursor()
         
@@ -457,16 +445,13 @@ class BnpParibasDatabase(BaseDatabase):
 
     # --- [ Configuration ] ---
     def __create_database_schema(self):
-        """
-        Crée le schéma SQLite optimisé avec index et triggers automatiques.
-        """
+        """Crée le schéma SQLite optimisé avec index et triggers automatiques"""
         connection = sqlite3.connect(self._db_path)
         cursor = connection.cursor()
 
         # Activation impérative des clés étrangères
         cursor.execute("PRAGMA foreign_keys = ON;")
 
-        # --- [ Tables, Index et Triggers ] ---
         cursor.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -548,7 +533,7 @@ class BnpParibasDatabase(BaseDatabase):
         connection.execute("PRAGMA foreign_keys = ON;")
         cursor = connection.cursor()
 
-        # 1. Nettoyage des Catégories Parentes
+        # Nettoyage des Catégories Parentes
         allowed_categories = set(self._categories_labels.keys())
         cursor.execute("SELECT id, name FROM categories")
         db_categories = cursor.fetchall()
@@ -559,7 +544,7 @@ class BnpParibasDatabase(BaseDatabase):
                 # Le CASCADE supprime la liaison, le TRIGGER libère la donnée brute.
                 cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
 
-        # 2. Nettoyage des Sous-Catégories (Cohérence Parent-Enfant)
+        # Nettoyage des Sous-Catégories (Cohérence Parent-Enfant)
         cursor.execute("""
             SELECT sc.id, sc.name, c.name 
             FROM sub_categories sc

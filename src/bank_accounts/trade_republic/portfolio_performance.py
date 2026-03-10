@@ -66,16 +66,12 @@ class PortfolioPerformance(TradeRepublicDatabase):
         Args:
             performances_tickers_eur (dict): Dictionnaire consolidé des performances par ticker en EUR.
         """
-
-        # Consolidation des métriques de base par somme pondérée des tickers
         portfolio_valuation = performances_tickers_eur["tickers_valuation"][self.__portfolio_name].sum(axis=1)
         portfolio_invested_amounts = performances_tickers_eur["tickers_invested_amounts"][self.__portfolio_name].sum(axis=1)
         portfolio_dividends = performances_tickers_eur["tickers_dividends"][self.__portfolio_name].sum(axis=1)
 
-        # Récupération des transactions et initialisation du moteur de calcul
         transactions_eur = self._get_transactions_in_eur()
 
-        # Calcul de l'évolution des plus-values réalisées
         portfolio_realized_gains_losses = self.__portfolio_engine._compute_plus_value_evolution(
             transactions_eur,
             performances_tickers_eur["tickers_invested_amounts"][self.__portfolio_name]

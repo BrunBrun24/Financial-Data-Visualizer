@@ -380,15 +380,7 @@ class PortfolioEngine:
 
     @staticmethod
     def _calculate_ecart_type(valuation_series: pd.Series) -> float:
-        """
-        Calcule la volatilité historique (écart-type) des rendements quotidiens.
-
-        Args:
-            - valuation_series (pd.Series) : Série de la valorisation du portefeuille.
-
-        Returns:
-            - float : Écart-type des rendements exprimé en pourcentage.
-        """
+        """Calcule la volatilité historique (écart-type) des rendements quotidiens"""
         val = valuation_series.loc[valuation_series.ne(0).idxmax():]
         return round(val.pct_change().dropna().std() * 100, 2)
     
@@ -543,15 +535,7 @@ class PortfolioEngine:
 
     @staticmethod
     def _calculate_dividend_earn(transactions: pd.DataFrame) -> float:
-        """
-        Calcule le montant total cumulé des dividendes nets perçus.
-
-        Args:
-            - transactions (pd.DataFrame) : DataFrame des transactions.
-
-        Returns:
-            - float : Somme totale des dividendes nets.
-        """
+        """Calcule le montant total cumulé des dividendes nets perçus"""
         mask = transactions["operation"] == "dividend"
         return (transactions.loc[mask, "amount"] - transactions.loc[mask, "fees"]).sum()
 
@@ -573,25 +557,3 @@ class PortfolioEngine:
         # Division par la dernière valeur connue du portefeuille
         return round((total_income / final_valuation_series.iloc[-1]) * 100, 2)
 
-
-    # --- [ Fonctions Utilitaires & Techniques ] ---
-    def _download_tickers_sma(self, tickers: list, sma_periods: list) -> pd.DataFrame:
-        """
-        Calcule les moyennes mobiles simples (SMA) pour une liste de tickers.
-
-        Args:
-            - tickers (list) : Liste des symboles boursiers.
-            - sma_periods (list) : Liste des périodes SMA (ex: [20, 50, 200]).
-
-        Returns:
-            - pd.DataFrame : DataFrame contenant les SMA calculées par ticker.
-        """
-        # Note : Suppose l'existence d'une méthode 'download_tickers_price' héritée ou injectée
-        prices = self.download_tickers_price(tickers, (self.__start_date - timedelta(max(sma_periods) + 50)), self.__end_date)
-        sma_df = pd.DataFrame()
-
-        for num_days in sma_periods:
-            rolling_mean = prices.rolling(window=num_days).mean()
-            for col in rolling_mean.columns:
-                sma_df[f"{col}_SMA_{num_days}"] = rolling_mean[col]
-        return sma_df

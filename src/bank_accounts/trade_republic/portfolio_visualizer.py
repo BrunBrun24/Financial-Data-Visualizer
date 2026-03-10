@@ -28,9 +28,7 @@ class PortfolioVisualizer(TradeRepublicDatabase):
 
     # --- [ Flux Principal ] ---
     def generate_performance_report(self):
-        """
-        Point d'entrée principal pour extraire les données et générer le fichier HTML.
-        """
+        """Point d'entrée principal pour extraire les données et générer le fichier HTML"""
         clean_df = self.__fetch_clean_data()
         
         if not clean_df.empty:
@@ -38,27 +36,18 @@ class PortfolioVisualizer(TradeRepublicDatabase):
 
     # --- [ Gestion du Système de Fichiers ] ---
     def __ensure_directory_structure(self):
-        """
-        Vérifie et crée les dossiers nécessaires pour le stockage du rapport.
-        """
-        # Création récursive du dossier si n'existe pas
+        """Vérifie et crée les dossiers nécessaires pour le stockage du rapport"""
         if not os.path.exists(self.__root_path):
             os.makedirs(self.__root_path)
 
     # --- [ Traitement des Données ] ---
     def __fetch_clean_data(self) -> pd.DataFrame:
-        """
-        Extrait les données de la base et filtre les actifs obsolètes.
-
-        Returns:
-            - pd.DataFrame : Données nettoyées prêtes pour la visualisation.
-        """
+        """Extrait les données de la base et filtre les actifs obsolètes."""
         df = self._get_performance_data()
         
         if df.empty:
             return df
         
-        # Conversion des dates pour les manipulations temporelles
         df['date'] = pd.to_datetime(df['date'])
 
         # Identification de la date la plus récente pour filtrer les positions fermées
@@ -80,12 +69,7 @@ class PortfolioVisualizer(TradeRepublicDatabase):
 
     # --- [ Génération HTML & Graphiques ] ---
     def __build_html_dashboard(self, df: pd.DataFrame):
-        """
-        Construit le fichier HTML intégrant la bibliothèque Highcharts et les données.
-
-        Args:
-            - df (pd.DataFrame) : Le DataFrame filtré contenant les métriques.
-        """
+        """Construit le fichier HTML intégrant la bibliothèque Highcharts et les données"""
         all_charts_config = []
         # Regroupement par portefeuille et type de métrique pour structurer les graphiques
         grouped = df.sort_values(['metric_type', 'ticker']).groupby(['portfolio_name', 'metric_type'])

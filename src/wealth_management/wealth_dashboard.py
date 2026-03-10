@@ -60,7 +60,6 @@ class WealthDashboard:
             except FileNotFoundError:
                 raise FileNotFoundError(f"Erreur de concaténation : {js_file} est manquant.")
 
-        # Construction du template HTML
         html_template = f"""
         <!DOCTYPE html>
         <html lang="fr">
@@ -101,7 +100,6 @@ class WealthDashboard:
         </html>
         """
         
-        # Exportation du fichier
         if not os.path.exists(export_path):
             os.makedirs(export_path)
             
@@ -444,18 +442,12 @@ class WealthDashboard:
         return {"checking": checking, "livret_a": livret_a, "trade_republic": trade_republic}
 
     def __average_monthly_expenses(self) -> float:
-        """
-        Calcule la moyenne des dépenses mensuelles sur les 12 derniers mois.
-
-        Returns:
-            - float : Montant moyen des dépenses mensuelles.
-        """
+        """Calcule la moyenne des dépenses mensuelles sur les 12 derniers mois"""
         # Fusion des sources
         df_checking = self.__bnp_checking_db._get_table_data('categorized_operations')
         df_livret_a = self.__bnp_livret_a_db._get_table_data('categorized_operations')
         df_all = pd.concat([df_checking, df_livret_a], ignore_index=True)
         
-        # Conversion des dates
         df_all['operation_date'] = pd.to_datetime(df_all['operation_date'])
         
         # Filtrage sur les 12 derniers mois

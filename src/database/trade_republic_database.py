@@ -42,11 +42,9 @@ class TradeRepublicDatabase(BaseDatabase):
         Les vérifications de cohérence entre les tickers sont gérées manuellement 
         au niveau de la logique applicative (Python).
         """
-        # Utilisation de la méthode privée pour obtenir une connexion configurée
         with self.__get_connection() as connection:
             cursor = connection.cursor()
 
-            # 1. Table Company
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS company (
                     ticker TEXT PRIMARY KEY,
@@ -61,7 +59,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # 2. Table Stock Price
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS stock_price (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +73,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # 3. Table Split
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS split (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +83,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # 4. Table Dividend
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS dividend (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +93,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # 5. Table Transaction (user_transaction)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_transaction (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,21 +107,18 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # Index pour l'unicité des achats et ventes
             cursor.execute('''
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_trade 
                 ON user_transaction (date, ticker, currency, operation, stock_price) 
                 WHERE operation IN ('buy', 'sell');
             ''')
 
-            # Index pour l'unicité des autres opérations
             cursor.execute('''
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_other_ops 
                 ON user_transaction (date, ticker, currency, operation) 
                 WHERE operation NOT IN ('buy', 'sell');
             ''')
 
-            # 6. Table File (Stockage binaire)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS file (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,7 +133,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 );
             ''')
 
-            # 7. Table des performances
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS performances (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,7 +181,6 @@ class TradeRepublicDatabase(BaseDatabase):
         query_reset_seq = "DELETE FROM sqlite_sequence WHERE name='performances'"
 
         try:
-            # Utilisation de la méthode de connexion privée de la classe
             with self.__get_connection() as connection:
                 cursor = connection.cursor()
                 cursor.execute(query_delete)
@@ -201,7 +190,7 @@ class TradeRepublicDatabase(BaseDatabase):
         except sqlite3.Error as error:
             raise RuntimeError(f"Erreur lors du vidage de la table performances : {error}")
         
-    def _fetch_and_update_companies(self, tickers: list[str]) -> None:
+    def _fetch_and_update_companies(self, tickers: list[str]):
         """
         Récupère et met à jour les données pour une liste de tickers de manière groupée.
         
@@ -219,25 +208,24 @@ class TradeRepublicDatabase(BaseDatabase):
         def __fetch_metadata(ticker_symbol: str) -> dict:
             try:
                 stock = yf.Ticker(ticker_symbol)
-                # L'accès aux propriétés force le téléchargement des données
                 return {
                     "ticker": ticker_symbol,
                     "stock_obj": stock,
-                    "info": stock.info,      # Appel réseau 1
-                    "dividends": stock.dividends, # Appel réseau 2
-                    "splits": stock.splits,    # Appel réseau 3
+                    "info": stock.info,
+                    "dividends": stock.dividends,
+                    "splits": stock.splits,
                     "error": None
                 }
             except Exception as e:
                 return {"ticker": ticker_symbol, "error": str(e)}
 
-        # 1. Téléchargement parallèle (Gain de performance majeur)
+        # Téléchargement parallèle (Gain de performance majeur)
         # max_workers=10 est un bon équilibre pour ne pas saturer la connexion
         fetched_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             fetched_results = list(executor.map(__fetch_metadata, tickers))
 
-        # 2. Écriture séquentielle en base (Sécurité SQLite)
+        # Écriture séquentielle en base (Sécurité SQLite)
         for data in fetched_results:
             if data["error"]:
                 # On log l'erreur mais on ne bloque pas le processus pour les autres
@@ -256,7 +244,7 @@ class TradeRepublicDatabase(BaseDatabase):
             except RuntimeError as e:
                 print(f"[Erreur] Échec écriture BDD pour {data['ticker']} : {e}")
 
-        # 3. Téléchargement massif des prix historiques (Géré nativement par yfinance)
+        # Téléchargement massif des prix historiques (Géré nativement par yfinance)
         self.__update_mass_stock_prices(tickers)
         
     def __update_mass_stock_prices(self, tickers: list[str]):
@@ -329,7 +317,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 # Cas où un ticker demandé n'est pas retourné par l'API
                 continue
 
-        # --- Insertion en base de données ---
         if price_records:
             query = """
                 INSERT OR REPLACE INTO stock_price 
@@ -355,7 +342,6 @@ class TradeRepublicDatabase(BaseDatabase):
             - ticker (str) : Symbole boursier de l'actif.
             - info (dict) : Dictionnaire de données provenant de yfinance.
         """
-        # Préparation du tuple de données avec gestion des valeurs de repli (fallbacks)
         data = (
             ticker,
             info.get('longName') or info.get('shortName') or ticker,
@@ -465,7 +451,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 connection.commit()
 
         except sqlite3.Error as error:
-            # Levée d'une RuntimeError avec un message explicite en français
             raise RuntimeError(f"Erreur lors de la mise à jour des splits pour {ticker} : {error}")
     
     def __apply_splits(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -536,8 +521,6 @@ class TradeRepublicDatabase(BaseDatabase):
 
         try:
             with self.__get_connection() as connection:
-                # Conversion du DataFrame en liste de dictionnaires (orient='records')
-                # Cette structure est parfaitement adaptée à executemany
                 data_to_insert = transactions_df.to_dict(orient='records')
                 connection.executemany(query, data_to_insert)
                 connection.commit()
@@ -614,7 +597,7 @@ class TradeRepublicDatabase(BaseDatabase):
         if target_currency not in ("USD", "EUR"):
             raise ValueError("La devise cible doit être USD ou EUR")
 
-        # Récupération de la structure des devises par ticker via la méthode protégée
+        # Récupération de la structure des devises par ticker
         # Renvoie un dictionnaire : {'USD': ['AAPL', ...], 'EUR': ['AIR', ...]}
         currencies_groups = self.__get_tickers_grouped_by_currency_company(list(df.columns))
         
@@ -688,12 +671,7 @@ class TradeRepublicDatabase(BaseDatabase):
 
     # --- [ Gestion des Fichiers ] ---
     def _mark_file_as_processed(self, file_id: int):
-        """
-        Met à jour le statut d'un fichier en base de données pour indiquer qu'il a été traité.
-
-        Args:
-            - file_id (int) : L'identifiant du fichier à marquer comme traité.
-        """
+        """Met à jour le statut d'un fichier en base de données pour indiquer qu'il a été traité"""
         query = "UPDATE file SET processed = 1 WHERE id = ?"
 
         try:
@@ -717,7 +695,6 @@ class TradeRepublicDatabase(BaseDatabase):
         Returns:
             - int : L'identifiant (ID) de la ligne insérée, ou -1 si le fichier est un doublon.
         """
-        # Vérification de l'existence du fichier physique
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Fichier introuvable : {file_path}")
 
@@ -738,7 +715,6 @@ class TradeRepublicDatabase(BaseDatabase):
     def __add_file_record(self, file_bytes: bytes, table_name: str) -> int:
         """
         Insère un nouvel enregistrement dans la table 'file'.
-        La date est gérée automatiquement par le DEFAULT CURRENT_TIMESTAMP de la base.
 
         Args:
             - file_bytes (bytes) : Le contenu binaire du fichier PDF.
@@ -795,10 +771,7 @@ class TradeRepublicDatabase(BaseDatabase):
         """
         Récupère la liste de tous les symboles boursiers (tickers) 
         enregistrés dans la table 'company'.
-
-        Returns:
-            - list[str] : Une liste de chaînes de caractères contenant les tickers.
-        """
+         """
         query = "SELECT ticker FROM company"
 
         try:
@@ -807,7 +780,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 cursor.execute(query)
                 
                 # fetchall renvoie une liste de tuples : [('AAPL',), ('MSFT',)]
-                # On utilise une compréhension de liste pour extraire la première valeur
                 return [row[0] for row in cursor.fetchall()]
 
         except sqlite3.Error as error:
@@ -832,8 +804,6 @@ class TradeRepublicDatabase(BaseDatabase):
             
             # Passage d'un format 'long' à un format 'wide'
             prices_df = raw_data.pivot(index='date', columns='ticker', values='open_price')
-
-            # Tri chronologique de l'index et remplissage par propagation (forward fill)
             prices_df = prices_df.sort_index().ffill()
 
             return prices_df
@@ -997,9 +967,6 @@ class TradeRepublicDatabase(BaseDatabase):
         """
         Récupère toutes les transactions et convertit les montants en EUR.
         Utilise le taux de change EURUSD=X pour les opérations en USD.
-
-        Returns:
-            - pd.DataFrame : Transactions converties en EUR, indexées par date.
         """
         query_tx = "SELECT id, ticker, currency, operation, date, amount, fees, stock_price, quantity FROM user_transaction"
         
@@ -1029,19 +996,14 @@ class TradeRepublicDatabase(BaseDatabase):
             usd_mask = df["currency"] == "USD"
 
             if usd_mask.any():
-                # On joint les taux correspondants à chaque ligne de transaction
-                # map() est beaucoup plus rapide que apply() pour cette opération
                 rates = df.index.map(fx_df["EURUSD=X"])
 
-                # Division vectorisée (USD -> EUR)
                 df.loc[usd_mask, "amount"] /= rates[usd_mask]
                 df.loc[usd_mask, "fees"] /= rates[usd_mask]
                 df.loc[usd_mask, "stock_price"] /= rates[usd_mask]
                 
-                # Mise à jour de la devise
                 df.loc[usd_mask, "currency"] = "EUR"
 
-            # Uniformisation finale
             df["currency"] = "EUR"
 
             return self.__apply_splits(df)
@@ -1050,9 +1012,7 @@ class TradeRepublicDatabase(BaseDatabase):
             raise RuntimeError(f"Erreur lors de la conversion des transactions en EUR : {error}")
         
     def _get_unprocessed_files(self) -> list:
-        """
-        Récupère les données binaires des PDF non traités.
-        """
+        """Récupère les données binaires des PDF non traités"""
         try:
             connection = sqlite3.connect(self._db_path)
             connection.row_factory = sqlite3.Row
@@ -1100,8 +1060,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 df = pd.read_sql_query(query, conn, params=[ticker])
 
                 if not df.empty:
-                    # Conversion et indexation via chaînage (plus robuste et explicite)
-                    # On évite inplace=True pour garantir une transition propre des données
                     df['date'] = pd.to_datetime(df['date'])
                     df = df.set_index('date')
                     df.index.name = 'date'
@@ -1122,8 +1080,6 @@ class TradeRepublicDatabase(BaseDatabase):
         Returns:
             - str : La date au format 'YYYY-MM-DD' ou None si aucune donnée n'est trouvée.
         """
-        # Comme on ne peut pas utiliser de paramètre (?) pour un nom de table,
-        # on valide que la table demandée fait partie des tables autorisées.
         allowed_tables = ['stock_price', 'dividend', 'split']
         if table_name not in allowed_tables:
             raise ValueError(f"Nom de table non autorisé : {table_name}")
@@ -1136,7 +1092,6 @@ class TradeRepublicDatabase(BaseDatabase):
                 cursor.execute(query, (ticker,))
                 result = cursor.fetchone()
                 
-                # Logique : renvoie la date (str) ou None
                 return result[0] if result and result[0] else None
 
         except Exception as error:
@@ -1177,11 +1132,9 @@ class TradeRepublicDatabase(BaseDatabase):
         Returns:
             - pd.DataFrame : Données filtrées et triées par [portfolio_name, ticker, metric_type].
         """
-        # Construction de la requête de base
         query = "SELECT date, ticker, metric_type, value, portfolio_name FROM performances WHERE 1=1"
         params = []
 
-        # Application des filtres dynamiques
         if portfolio_name:
             query += " AND portfolio_name = ?"
             params.append(portfolio_name)
@@ -1194,15 +1147,12 @@ class TradeRepublicDatabase(BaseDatabase):
             query += " AND metric_type = ?"
             params.append(metric_type)
 
-        # Tri selon vos instructions : Portefeuille > Ticker > Métrique
-        # On ajoute également la date à la fin pour garantir un ordre chronologique
         query += " ORDER BY portfolio_name ASC, ticker ASC, metric_type ASC, date ASC"
 
         # Extraction des données
         with self.__get_connection() as connection:
             df = pd.read_sql_query(query, connection, params=params)
             
-            # Conversion de la date pour faciliter l'exploitation des séries temporelles
             if not df.empty:
                 df['date'] = pd.to_datetime(df['date'])
                 

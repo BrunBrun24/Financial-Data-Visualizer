@@ -21,9 +21,6 @@ class ExcelReportGenerator(BnpParibasDatabase):
     """
 
     def __init__(self, db_path: str, root_path: str):
-        """
-        Initialise le générateur.
-        """
         super().__init__(db_path)
         self.__root_path = os.path.abspath(root_path)
         self.months = ["JAN", "FÉV", "MAR", "AVR", "MAI", "JUIN", 
@@ -32,9 +29,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
     # --- [ Configuration des Styles ] ---
     def __get_excel_formats(self, wb):
-        """
-        Définit les formats visuels du document.
-        """
+        """Définit les formats visuels du document."""
         border_thin = {'border': 1, 'border_color': '#D3D3D3'}
         return {
             'title': wb.add_format({'font_name': 'Arial', 'font_size': 24, 'bold': True, 'align': 'center', 'valign': 'vcenter'}),
@@ -71,9 +66,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
     # --- [ Logique de Données Dynamiques ] ---
     def __get_monthly_amounts(self, year: int) -> pd.DataFrame:
-        """
-        Récupère les sommes des opérations groupées par mois et sous-catégorie.
-        """
+        """Récupère les sommes des opérations groupées par mois et sous-catégorie."""
         df = self._get_categorized_operations_df()
         if df.empty:
             return pd.DataFrame(columns=['sub_category', 'month_idx', 'amount'])
@@ -88,9 +81,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
         return summary
 
     def __get_filtered_structure(self, data_summary: pd.DataFrame) -> list:
-        """
-        Filtre et trie la structure par montant annuel décroissant.
-        """
+        """Filtre et trie la structure par montant annuel décroissant."""
         df_sub = self._get_table_data("sub_categories")
         if df_sub.empty:
             return []
@@ -127,9 +118,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
     # --- [ Génération des Rapports ] ---
     def __generate_annual_report(self, year: int):
-        """
-        Génère le rapport Excel avec colonnes décalées et tri décroissant.
-        """
+        """Génère le rapport Excel avec colonnes décalées et tri décroissant."""
         data_summary = self.__get_monthly_amounts(year)
         structure = self.__get_filtered_structure(data_summary)
 
@@ -264,9 +253,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
         wb.close()
 
     def generate_all_reports(self):
-        """
-        Génère les rapports pour chaque année présente en base.
-        """
+        """Génère les rapports pour chaque année présente en base."""
         df = self._get_categorized_operations_df()
         if df.empty:
             return
