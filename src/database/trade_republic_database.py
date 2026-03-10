@@ -134,7 +134,8 @@ class TradeRepublicDatabase(BaseDatabase):
                     file BLOB NOT NULL UNIQUE,
                     table_associee TEXT NOT NULL CHECK(table_associee IN (
                         'buy', 'sell', 'dividend', 'interest', 'deposit', 
-                        'withdrawal', 'purchase_costs', 'sales_costs'
+                        'withdrawal', 'purchase_costs', 'sales_costs',
+                        'gift'
                     )),
                     date TEXT DEFAULT CURRENT_TIMESTAMP,
                     processed INTEGER NOT NULL DEFAULT 0

@@ -41,10 +41,12 @@ class TradeRepublicImporter(TradeRepublicDatabase):
         'deposit', 
         'withdrawal', 
         # 'purchase_costs', 
-        # 'sales_costs'
+        # 'sales_costs',
+        'gift'
     )
 
     TICKERS_MAPPING = {
+        'Netflix': 'NFLX',
         'Hermes': 'RMS.PA',
         'Air Liquide': 'AI.PA',
         'TotalEnergies': 'TTE.PA',
@@ -161,7 +163,7 @@ class TradeRepublicImporter(TradeRepublicDatabase):
                 # Regrouper les opérations pour les mêmes dates
                 df = self.__aggregate_transactions(df)
 
-                if category in ['buy', 'sell']:
+                if category in ['buy', 'sell', 'gift']:
                     # On utilise le validateur pour vérifier/corriger les dates avant insertion pour les achats et les ventes
                     # Les noms de colonnes doivent correspondre à votre structure de DataFrame
                     date_validator = ExecutionDateValidator(data=df)
@@ -188,7 +190,7 @@ class TradeRepublicImporter(TradeRepublicDatabase):
         Returns:
             pd.DataFrame: Les données extraites structurées, ou None pour les documents informatifs.
         """
-        if category == 'deposit':
+        if category in ['deposit', 'gift']:
             return self.__process_deposit_data(pdf_blobs)
         elif category == 'dividend':
             return self.__process_dividend_data(pdf_blobs)
@@ -243,7 +245,7 @@ class TradeRepublicImporter(TradeRepublicDatabase):
             folder_path (str): Dossier contenant le fichier.
             category (str): Type de transaction (nom du dossier).
         """
-        if category in ('deposit', 'withdrawal', 'interest'):
+        if category in ('deposit', 'withdrawal', 'interest', 'gift'):
             self.__rename_cash_operation(file_path, folder_path)
         
         elif category == 'dividend':
