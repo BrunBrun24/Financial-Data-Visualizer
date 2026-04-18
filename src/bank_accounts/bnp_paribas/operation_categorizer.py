@@ -1,6 +1,8 @@
 import re
-import tkinter as tk
 import unicodedata
+from typing import Dict, List
+
+import customtkinter as ctk
 
 from database.bnp_paribas_database import BnpParibasDatabase
 
@@ -15,59 +17,65 @@ class OperationCategorizer(BnpParibasDatabase):
     - Permettre la catégorisation manuelle via des boutons représentant les catégories et sous-catégories.
     - Passer à l’opération suivante sans catégorisation si nécessaire.
     - Enregistrer les opérations catégorisées dans la base et les marquer comme traitées.
-
-    Cette classe combine automatisation et intervention manuelle pour faciliter la classification des transactions financières.
     """
 
-    def __init__(self, db_path: str, buttons_per_row=5):
+    def __init__(self, parent: ctk.CTk, db_path: str, bank_account_id: int, buttons_per_row=5):
         """
         Initialise l'interface de catégorisation et charge les données nécessaires.
 
-        Prépare l'état initial de l'application en récupérant la hiérarchie des 
+        Prépare l'état initial de l'application en récupérant la hiérarchie des
         catégories, les identifiants techniques et la liste des opérations à traiter.
-
-        Args :
-        - db_path (str) : Chemin vers la base de données SQLite.
-        - buttons_per_row (int) : Nombre de boutons de catégories affichés par ligne.
         """
+
         super().__init__(db_path)
-        
+
+        # Permet de savoir s'il y a eu de nouvelles opérations qui ont été catégorisées
+        self.has_changed = False
+
+        self.__bank_account_id = bank_account_id
         self.__buttons_per_row = buttons_per_row
         self.__operations = self._get_unprocessed_raw_operations()
         self.__history = []  # Pile pour stocker les opérations précédemment traitées
-        
-        self.__root = tk.Tk()
+
+        # On crée une fenêtre secondaire liée au parent
+        self.__root = ctk.CTkToplevel(parent)
+        self.__root.title("Classification des opérations")
+        self.__root.attributes("-topmost", True)  # Garde la fenêtre au premier plan
+        self.__root.grab_set()  # Rend la fenêtre "modale" (bloque celle du dessous)
         self.__window_width = 800
         self.__window_height = 600
-        self.__display_label = tk.Label(self.__root, text="", wraplength=self.__window_width - 50)
-        self.__display_label.grid(row=(len(self._categories_labels) // self.__buttons_per_row) + 1, column=0, columnspan=self.__buttons_per_row, pady=20)
-    
-    
-    # --- [ Gestion de l'Interface ] ---
-    def categorize(self):
-        """
-		Lance l'interface graphique pour la catégorisation des opérations.
+        self.__display_label = ctk.CTkLabel(self.__root, text="", wraplength=self.__window_width - 50)
+        self.__display_label.grid(
+            row=(len(self._categories_labels) // self.__buttons_per_row) + 1,
+            column=0,
+            columnspan=self.__buttons_per_row,
+            pady=20,
+        )
 
-		Actions :
-		- Configure la fenêtre principale
-		- Centre la fenêtre à l'écran
-		- Affiche la première opération à catégoriser
-		- Démarre la boucle principale Tkinter pour gérer les interactions utilisateur
+    def categorize(self) -> ctk.CTkToplevel:
         """
-        # Fenêtre principale
+        Lance l'interface graphique pour la catégorisation des opérations.
+
+        Actions :
+        - Configure la fenêtre principale
+        - Centre la fenêtre à l'écran
+        - Affiche la première opération à catégoriser
+        - Démarre la boucle principale Tkinter pour gérer les interactions utilisateur
+        """
+
         self.__root.title("Catégorisation d'opérations")
 
         self.__center_window()
         self.__update_display()
 
-        # Démarrer la boucle principale de Tkinter
-        self.__root.mainloop()
+        return self.__root
 
-    def __center_window(self):
+    def __center_window(self) -> None:
         """
-		Centre la fenêtre Tkinter sur l'écran en ajustant sa position
-		en fonction de la largeur et hauteur de l'écran et de la fenêtre.
+        Centre la fenêtre Tkinter sur l'écran en ajustant sa position
+        en fonction de la largeur et hauteur de l'écran et de la fenêtre.
         """
+
         screen_width = self.__root.winfo_screenwidth()
         screen_height = self.__root.winfo_screenheight()
 
@@ -76,18 +84,22 @@ class OperationCategorizer(BnpParibasDatabase):
 
         self.__root.geometry(f"{self.__window_width}x{self.__window_height}+{x}+{y}")
 
-    def __update_display(self):
+    def __update_display(self) -> None:
         """
-		Met à jour l'affichage de l'interface Tkinter avec l'opération courante.
+        Met à jour l'affichage de l'interface Tkinter avec l'opération courante.
 
-		- Si aucune opération n'est disponible, ferme la fenêtre.
-		- Traite les cas spéciaux automatiquement si applicable.
-		- Affiche le texte descriptif de l'opération.
-		- Détermine et affiche les boutons des catégories pertinentes selon le montant.
+        - Si aucune opération n'est disponible, ferme la fenêtre.
+        - Traite les cas spéciaux automatiquement si applicable.
+        - Affiche le texte descriptif de l'opération.
+        - Détermine et affiche les boutons des catégories pertinentes selon le montant.
         """
+
         if not self.__operations:
             self.__root.after(0, self.__root.destroy)
             return
+
+        # On marque qu'une catégorisation à eu lieu
+        self.has_changed = True
 
         # Récupère la première opération
         row = self.__operations[0]
@@ -103,9 +115,7 @@ class OperationCategorizer(BnpParibasDatabase):
             return
 
         # Affichage du texte
-        self.__display_label.config(
-            text=row[4] + "\n\n" + f"{row[1]}   =>   {row[5]}€"
-        )
+        self.__display_label.configure(text=row[4] + "\n\n" + f"{row[1]}   =>   {row[5]}€")
 
         # Filtrage et tri des catégories principales
         if row[5] >= 0:
@@ -114,28 +124,14 @@ class OperationCategorizer(BnpParibasDatabase):
             # Tri des catégories sans tenir compte des accents
             sorted_keys = sorted(
                 [k for k in self._categories_labels.keys() if k != "Revenus"],
-                key=self.__normalize_text
+                key=self.__normalize_text,
             )
             filtered_buttons = {key: self._categories_labels[key] for key in sorted_keys}
 
         self.__create_buttons(filtered_buttons)
 
-    def __create_buttons(self, filtered_buttons: dict):
-        """
-		Crée dynamiquement des boutons Tkinter pour les catégories et sous-catégories
-		filtrées et ajoute un bouton de navigation "Suivant".
-
-		Args:
-		- filtered_buttons (dict) : dictionnaire { 'Categorie': ['Sous1', 'Sous2'], ... } 
-		  représentant les catégories et sous-catégories à afficher.
-        """
-        assert isinstance(filtered_buttons, dict), "filtered_buttons doit être un dictionnaire."
-        assert all(
-            isinstance(label, str)
-            and isinstance(sub_labels, list)
-            and all(isinstance(sub, str) for sub in sub_labels)
-            for label, sub_labels in filtered_buttons.items()
-        ), "Les clés doivent être des chaînes et les valeurs des listes de chaînes."
+    def __create_buttons(self, filtered_buttons: Dict[str, List[str]]) -> None:
+        """Crée dynamiquement des boutons Tkinter pour les catégories et sous-catégories."""
 
         # Supprimer tous les widgets sauf le label d'affichage
         for widget in self.__root.winfo_children():
@@ -147,10 +143,10 @@ class OperationCategorizer(BnpParibasDatabase):
             row = i // self.__buttons_per_row
             column = i % self.__buttons_per_row
 
-            button = tk.Button(
+            button = ctk.CTkButton(
                 self.__root,
                 text=label,
-                command=lambda l=label: self.__button_clicked(l)
+                command=lambda l=label: self.__button_clicked(l),
             )
             button.grid(row=row, column=column, padx=10, pady=10, sticky="ew")
 
@@ -159,20 +155,22 @@ class OperationCategorizer(BnpParibasDatabase):
 
         # Bouton "Annuler" (Affiché uniquement si un historique existe)
         if self.__history:
-            undo_button = tk.Button(
+            undo_button = ctk.CTkButton(
                 self.__root,
                 text="Annuler",
                 command=self.__undo_last_action,
-                bg="#FFCDD2"
+                fg_color="#CC3333",
+                hover_color="#990000",
             )
             undo_button.grid(row=navigation_row, column=0, pady=10, sticky="ew")
 
         # Bouton "Suivant"
-        skip_button = tk.Button(
-            self.__root, 
-            text="Suivant", 
+        skip_button = ctk.CTkButton(
+            self.__root,
+            text="Suivant",
             command=self.__skip_entry,
-            bg="#CECDFF"
+            fg_color="#5C5CFF",
+            hover_color="#3F3FBF",
         )
         skip_button.grid(row=navigation_row, column=self.__buttons_per_row - 1, pady=10, sticky="ew")
 
@@ -180,19 +178,14 @@ class OperationCategorizer(BnpParibasDatabase):
         for i in range(self.__buttons_per_row):
             self.__root.grid_columnconfigure(i, weight=1)
 
-    def __button_clicked(self, category_name: str):
+    def __button_clicked(self, category_name: str) -> None:
         """
         Gère le clic sur une catégorie principale et affiche ses sous-catégories.
 
-        Si la catégorie possède des éléments enfants, l'interface est nettoyée 
+        Si la catégorie possède des éléments enfants, l'interface est nettoyée
         pour afficher les boutons des sous-catégories triés par ordre alphabétique.
         Sinon, l'opération est directement traitée.
-
-        Args:
-            - category_name (str) : Le nom de la catégorie sélectionnée par l'utilisateur.
         """
-        # Vérification de la validité de la catégorie
-        assert category_name in self._categories_labels, f"{category_name} n'est pas une catégorie valide."
 
         sub_categories = self._categories_labels[category_name]
 
@@ -210,56 +203,49 @@ class OperationCategorizer(BnpParibasDatabase):
             for i, sub_label in enumerate(sorted_sub_categories):
                 row = i // self.__buttons_per_row
                 column = i % self.__buttons_per_row
-                
-                btn = tk.Button(
+
+                btn = ctk.CTkButton(
                     self.__root,
                     text=sub_label,
-                    command=lambda s=sub_label, c=category_name: self.__sub_button_clicked(s, c)
+                    command=lambda s=sub_label, c=category_name: self.__sub_button_clicked(s, c),
                 )
                 btn.grid(row=row, column=column, padx=10, pady=10, sticky="ew")
 
             # Calcul de la position de la ligne de navigation (placée après les boutons)
             row_index = (len(sorted_sub_categories) // self.__buttons_per_row) + 10
-            
+
             # Ajout des boutons de navigation : Retour et Suivant
-            back_button = tk.Button(
-                self.__root, 
-                text="Retour", 
-                command=self.__update_display
-            )
+            back_button = ctk.CTkButton(self.__root, text="Retour", command=self.__update_display)
             back_button.grid(
-                row=row_index, 
-                column=0, 
-                columnspan=self.__buttons_per_row - 2, 
-                pady=10, 
-                sticky="ew"
+                row=row_index,
+                column=0,
+                columnspan=self.__buttons_per_row - 2,
+                pady=10,
+                sticky="ew",
             )
 
-            next_button = tk.Button(
-                self.__root, 
-                text="Suivant", 
+            next_button = ctk.CTkButton(
+                self.__root,
+                text="Suivant",
                 command=self.__skip_entry,
-                bg="#CECDFF"
+                fg_color="#5C5CFF",
+                hover_color="#3F3FBF",
             )
-            next_button.grid(
-                row=row_index, 
-                column=self.__buttons_per_row - 1, 
-                pady=10, 
-                sticky="ew"
-            )
-            
+            next_button.grid(row=row_index, column=self.__buttons_per_row - 1, pady=10, sticky="ew")
+
         else:
             # Si aucune sous-catégorie n'existe, on traite directement l'opération
             raise ValueError(f"Erreur : Il n'y a pas de sous-catégories pour la catégorie '{category_name}'.")
 
-    def __skip_entry(self):
+    def __skip_entry(self) -> None:
         """
-		Passe à l'opération suivante sans effectuer de catégorisation.
+        Passe à l'opération suivante sans effectuer de catégorisation.
 
-		Actions :
-		- Supprime l'opération actuellement affichée de la liste
-		- Met à jour l'affichage pour montrer l'opération suivante
+        Actions :
+        - Supprime l'opération actuellement affichée de la liste
+        - Met à jour l'affichage pour montrer l'opération suivante
         """
+
         if self.__operations:
             # On enlève la première (celle affichée actuellement)
             self.__operations.pop(0)
@@ -267,7 +253,7 @@ class OperationCategorizer(BnpParibasDatabase):
         # Mise à jour de l'affichage
         self.__update_display()
 
-    def __undo_last_action(self):
+    def __undo_last_action(self) -> None:
         """
         Annule la dernière catégorisation effectuée et recharge l'opération.
 
@@ -277,16 +263,16 @@ class OperationCategorizer(BnpParibasDatabase):
         - Réinsère l'opération en début de file d'attente.
         - Rafraîchit l'affichage.
         """
+
         if not self.__history:
             # Aucun historique disponible, on ne fait rien
             return
 
         # Récupère la dernière opération traitée (LIFO)
         last_operation = self.__history.pop()
-        
-        # Suppression en base de données via l'ID de la transaction (row[0])
-        # Note : nécessite la méthode _delete_categorized_transaction dans la classe parente
-        self._delete_categorized_transaction(last_operation[0])
+
+        # Suppression en base de données via l'ID de la transaction
+        self._delete_operation(last_operation[0])
 
         # Réinsertion en première position de la liste de travail
         self.__operations.insert(0, last_operation)
@@ -294,93 +280,98 @@ class OperationCategorizer(BnpParibasDatabase):
         # Mise à jour de l'interface graphique
         self.__update_display()
 
-
-    # --- [ Logique de Catégorisation ] ---
     def __process_special_cases(self, row: list) -> bool:
         """
-		Traite automatiquement certains cas particuliers d'opérations bancaires
-		et les catégorise selon des règles prédéfinies.
+        Traite automatiquement certains cas particuliers d'opérations bancaires
+        et les catégorise selon des règles prédéfinies.
 
-		Returns:
-		- bool : True si l'opération nécessite une catégorisation manuelle (afficher les boutons),
-		         False si l'opération a été catégorisée automatiquement (ne pas afficher les boutons).
+        Returns:
+        - bool : True si l'opération nécessite une catégorisation manuelle (afficher les boutons),
+                 False si l'opération a été catégorisée automatiquement (ne pas afficher les boutons).
         """
+
         amount = row[5]
         short_label = row[2]
         full_label = row[4]
 
         # --- Revenus ---
         if short_label == "REMISE CHEQUES":
-            self._save_categorized_transaction(row, "Revenus", "Chèques reçus")
+            self._update_operation(self.__bank_account_id, row, "Revenus", "Chèques reçus")
             return False
 
-        elif bool(re.match(r'^DE AUBRUN PAUL EMIL', full_label)) or bool(re.match(r'^DE MR PAUL AUBRUN', full_label)):
-            self._save_categorized_transaction(row, "Revenus", "Virements internes")
+        elif bool(re.match(r"^DE AUBRUN PAUL EMIL", full_label)) or bool(re.match(r"^DE MR PAUL AUBRUN", full_label)):
+            self._update_operation(self.__bank_account_id, row, "Revenus", "Virements internes")
             return False
 
         elif (
-            short_label == "VIREMENT PERMANENT" or
-            full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL" or 
-            full_label == "DE AUBRUN /MOTIF VIREMENT PAUL"
+            short_label == "VIREMENT PERMANENT"
+            or full_label == "VIR CPTE A CPTE RECU AUBRUN VIREMENT PAUL"
+            or full_label == "DE AUBRUN /MOTIF VIREMENT PAUL"
         ):
-            self._save_categorized_transaction(row, "Revenus", "Virements reçus")
+            self._update_operation(self.__bank_account_id, row, "Revenus", "Virements reçus")
             return False
 
         elif full_label == "REMUNERATION NETTE":
-            self._save_categorized_transaction(row, "Revenus", "Intérêts")
+            self._update_operation(self.__bank_account_id, row, "Revenus", "Intérêts")
             return False
 
         # --- Abonnement ---
         elif full_label == "COMMISSIONS COTISATION A UNE OFFRE GROUPEE DE SERVICES ESPRIT LIBRE":
-            self._save_categorized_transaction(row, "Abonnement", "Assurance Bancaire")
+            self._update_operation(self.__bank_account_id, row, "Abonnement", "Assurance Bancaire")
             return False
 
         # --- Banque ---
-        elif bool(re.match(r'^COMMISSIONS COTISATION ANNUELLE VISUEL PERSONNALISE CARTE CARTE N', full_label)):
-            self._save_categorized_transaction(row, "Banque", "Frais de carte")
+        elif bool(
+            re.match(
+                r"^COMMISSIONS COTISATION ANNUELLE VISUEL PERSONNALISE CARTE CARTE N",
+                full_label,
+            )
+        ):
+            self._update_operation(self.__bank_account_id, row, "Banque", "Frais de carte")
             return False
 
         # --- Investissement ---
-        elif bool(re.match(r'^TRADE REPUBLIC', full_label)) and amount < 0:
-            self._save_categorized_transaction(row, "Investissement", "CTO")
+        elif bool(re.match(r"^TRADE REPUBLIC", full_label)) and amount < 0:
+            self._update_operation(self.__bank_account_id, row, "Investissement", "CTO")
             return False
 
         elif short_label == "VIREMENT INTERNE" and amount < 0:
-            self._save_categorized_transaction(row, "Épargne", "Livret A")
+            self._update_operation(self.__bank_account_id, row, "Épargne", "Livret A")
             return False
 
         # --- Transports ---
         elif any(station in full_label for station in ["STATION U"]):
-            self._save_categorized_transaction(row, "Transports et véhicules", "Carburant")
+            self._update_operation(self.__bank_account_id, row, "Transports et véhicules", "Carburant")
             return False
 
         return True
 
-    def __sub_button_clicked(self, sub_button_name: str, parent_button_name: str):
+    def __sub_button_clicked(self, sub_categorie: str, main_categorie: str) -> None:
         """
-		Gère le clic sur une sous-catégorie et archive l'opération.
+        Gère le clic sur une sous-catégorie et archive l'opération.
 
-		Args:
-		- sub_button_name (str) : nom de la sous-catégorie cliquée
-		- parent_button_name (str) : nom de la catégorie parente
-
-		Actions :
-		- Enregistre l'opération courante avec la catégorie et sous-catégorie sélectionnées
-		- Passe à l'opération suivante dans la liste
+        Actions :
+        - Enregistre l'opération courante avec la catégorie et sous-catégorie sélectionnées
+        - Passe à l'opération suivante dans la liste
         """
+
         # Archivage de l'opération courante avant traitement
         self.__history.append(self.current_row)
 
         # Conversion des noms des boutons en IDs techniques
-        self._save_categorized_transaction(self.current_row, parent_button_name, sub_button_name)
+        self._update_operation(
+            self.__bank_account_id,
+            self.current_row,
+            main_categorie,
+            sub_categorie,
+        )
 
         # Passage à l'élément suivant
         self.__operations.pop(0)
         self.__update_display()
 
-
-    # --- [ Utilitaires de Formatage ] ---
     def __normalize_text(self, text: str) -> str:
         """Normalise une chaîne de caractères en supprimant les accents et en passant en minuscules"""
-        normalized = unicodedata.normalize('NFD', text)
-        return "".join(c for c in normalized if unicodedata.category(c) != 'Mn').lower()
+
+        normalized = unicodedata.normalize("NFD", text)
+        return "".join(c for c in normalized if unicodedata.category(c) != "Mn").lower()

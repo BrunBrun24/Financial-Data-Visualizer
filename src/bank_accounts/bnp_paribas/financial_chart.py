@@ -12,36 +12,30 @@ from database.bnp_paribas_database import BnpParibasDatabase
 
 class FinancialChart(BnpParibasDatabase):
     """
-    Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire. 
+    Génère différents graphiques financiers à partir des opérations catégorisées d'un compte bancaire.
     Elle hérite de `BnpParibasDatabase` et fournit des méthodes pour :
 
     - Créer des dossiers annuels pour organiser les graphiques.
-    - Générer des graphiques Sankey, en barres empilées et circulaires (sunburst) pour visualiser 
+    - Générer des graphiques Sankey, en barres empilées et circulaires (sunburst) pour visualiser
     les revenus, les dépenses et leur répartition par catégorie et sous-catégorie.
     - Combiner plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
     - Produire des bilans annuels et mensuels en créant et sauvegardant automatiquement les fichiers HTML.
     """
 
-    def __init__(self, db_path: str, root_path: str):
-        """
-        Initialise le générateur de graphiques et charge les données.
+    DESTINATION_PATH = "Bilan"
 
-        Args :
-        - db_path (str) : Chemin vers la base de données.
-        - root_path (str) : Dossier de destination pour les rapports HTML.
-        """
+    def __init__(self, db_path: str, account_name: str):
         super().__init__(db_path)
-        self.__root_path = root_path
+        self.__root_path = f"{self.DESTINATION_PATH}/{account_name}"
         self.__file_highcharts = []
 
         self.report_data_handler = ReportDataHandler()
-        self.report_data_handler._create_annual_folders(self.__root_path, self._get_categorized_operations_df())
 
+        os.makedirs(self.__root_path, exist_ok=True)
 
-    # --- [ Flux Principal ] ---
     def generate_all_reports(self):
         """
-        Génère les bilans financiers annuels et mensuels à partir des opérations catégorisées.
+        Génère les bilans financiers annuels à partir des opérations catégorisées.
 
         Cette méthode crée pour chaque année :
         - Des graphiques Sankey pour visualiser les flux financiers.
@@ -50,20 +44,22 @@ class FinancialChart(BnpParibasDatabase):
 
         Les fichiers HTML correspondants sont sauvegardés dans des dossiers par année.
         """
+
         years_operations_categorisees = self._get_categorized_operations_by_year()
 
         # Regroupe toutes les opérations pour faire le bilan des différentes années
         all_operation_categorisees = pd.DataFrame()
 
         for year, operation_categorisees in years_operations_categorisees.items():
-            self.__output_file = f"{self.__root_path}{year}/Bilan {year}.html"
+            self.__output_file = f"{self.__root_path}/Bilan {year}.html"
             df_revenus = self.report_data_handler._get_income_df(operation_categorisees)
             df_depenses = self.report_data_handler._get_expense_df(operation_categorisees)
-            all_operation_categorisees = pd.concat([all_operation_categorisees, operation_categorisees], ignore_index=True)
+            all_operation_categorisees = pd.concat(
+                [all_operation_categorisees, operation_categorisees], ignore_index=True
+            )
 
             self.__generate_annual_report(df_revenus, df_depenses, operation_categorisees)
-            self.__generate_monthly_report(operation_categorisees, year)
-            
+
         # Bilan de toutes les années
         years = list(years_operations_categorisees.keys())
         if years != []:
@@ -72,7 +68,6 @@ class FinancialChart(BnpParibasDatabase):
             df_depenses = self.report_data_handler._get_expense_df(all_operation_categorisees)
             self.__generate_annual_report(df_revenus, df_depenses, all_operation_categorisees)
 
-    
     # --- [ Production des Bilans ] ---
     def __generate_annual_report(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
         """Crée les graphiques pour le bilan annuel selon la présence de revenus et/ou dépenses."""
@@ -83,33 +78,10 @@ class FinancialChart(BnpParibasDatabase):
             self.__compte_courant_income(df_revenus)
         else:
             self.__compte_courant_expenses(df_depenses)
-            
-    def __generate_monthly_report(self, df_all: pd.DataFrame, year: int):
-        """
-        Génère les graphiques mensuels pour le bilan d'une année donnée.
 
-        Args :
-            df_all (pd.DataFrame) : DataFrame complet des opérations financières de l'année.
-            year (int) : Année pour laquelle les graphiques mensuels sont créés.
-        """
-        month_operations_categorisees = self.__get_categorized_month_operations(df_all)
-
-        for month, operations_categorisees in month_operations_categorisees.items():
-            self.__output_file = f"{self.__root_path}{year}/{year}-{month}.html"
-            df_revenus_month = self.report_data_handler._get_income_df(operations_categorisees)
-            df_depenses_month = self.report_data_handler._get_expense_df(operations_categorisees)
-            df_all_month = pd.concat([df_revenus_month, df_depenses_month], ignore_index=True)
-
-            if (not df_revenus_month.empty) and (not df_depenses_month.empty):
-                self.__compte_courant_income_expenses(df_revenus_month, df_depenses_month, df_all_month)
-            elif (not df_revenus_month.empty) and (df_depenses_month.empty):
-                self.__compte_courant_income(df_revenus_month)
-            else:
-                self.__compte_courant_expenses(df_depenses_month)
-
-
-    # --- [ Traitement des Données ] ---
-    def __compte_courant_income_expenses(self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame):
+    def __compte_courant_income_expenses(
+        self, df_revenus: pd.DataFrame, df_depenses: pd.DataFrame, df_all: pd.DataFrame
+    ):
         """
         Génère et organise les graphiques pour un compte courant avec revenus et dépenses.
 
@@ -121,27 +93,27 @@ class FinancialChart(BnpParibasDatabase):
             - Combine plusieurs graphiques côte à côte si nécessaire.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
+
         self.__generate_html_file(df_all)
 
-        df_filtre = df_depenses[
-            (df_depenses['category'] != 'Investissement') &
-            (df_depenses['category'] != 'Épargne')
-        ]
+        df_filtre = df_depenses[(df_depenses["category"] != "Investissement") & (df_depenses["category"] != "Épargne")]
         if (df_depenses.equals(df_filtre)) or (df_filtre.empty):
             self.__create_pie_chart(df=df_depenses, name="Dépenses")
         else:
             fig_soleil_depenses = self.__create_pie_chart(df=df_filtre, name="Dépenses", save=False)
             fig_soleil = self.__create_pie_chart(df=df_depenses, name="Dépenses + Investissement", save=False)
-        
+
             self.__create_combined_charts(fig_soleil_depenses, fig_soleil)
-        
-        df_filtre = df_revenus[df_revenus['sub_category'] != 'Virements internes']
+
+        df_filtre = df_revenus[df_revenus["sub_category"] != "Virements internes"]
         if df_filtre.equals(df_revenus):
             self.__create_pie_chart(df=df_filtre, name="Revenus gagné")
         else:
             fig_soleil_revenus = self.__create_pie_chart(df=df_filtre, name="Revenus gagné", save=False)
-            fig_soleil_all_revenus = self.__create_pie_chart(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
-            
+            fig_soleil_all_revenus = self.__create_pie_chart(
+                df=df_revenus, name="Revenus gagné + Virements internes", save=False
+            )
+
             self.__create_combined_charts(fig_soleil_revenus, fig_soleil_all_revenus)
 
         self.__save_in_file()
@@ -156,14 +128,12 @@ class FinancialChart(BnpParibasDatabase):
             - Combine plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
+
         self.__generate_html_file(df_depenses)
 
         # Filtrer les lignes où la colonne 'category' n'est pas 'Investissement' ni "Épargne"
-        df_filtre = df_depenses[
-            (df_depenses['category'] != 'Investissement') &
-            (df_depenses['category'] != 'Épargne')
-        ]
-        
+        df_filtre = df_depenses[(df_depenses["category"] != "Investissement") & (df_depenses["category"] != "Épargne")]
+
         # Vérifier si le DataFrame complet des revenus est identique au DataFrame filtré ou que le DataFrame filtré est vide
         if (df_depenses.equals(df_filtre)) or (df_filtre.empty):
             self.__create_pie_chart(df=df_depenses, name="Dépenses")
@@ -171,7 +141,7 @@ class FinancialChart(BnpParibasDatabase):
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
             fig_soleil_depenses = self.__create_pie_chart(df=df_filtre, name="Dépenses", save=False)
             fig_soleil = self.__create_pie_chart(df=df_depenses, name="Dépenses + Investissement", save=False)
-        
+
             # Création des graphiques dans l'ordre dans le fichier
             self.__create_combined_charts(fig_soleil_depenses, fig_soleil)
 
@@ -186,10 +156,11 @@ class FinancialChart(BnpParibasDatabase):
             - Combine plusieurs graphiques côte à côte si nécessaire pour éviter les doublons.
             - Sauvegarde tous les graphiques générés dans un fichier HTML.
         """
+
         self.__generate_html_file(df_revenus)
         # Filtrer les lignes où la colonne 'sub_category' n'est pas 'Virements internes'
-        df_filtre = df_revenus[df_revenus['sub_category'] != 'Virements internes']
-        
+        df_filtre = df_revenus[df_revenus["sub_category"] != "Virements internes"]
+
         # Vérifier si le DataFrame filtré est identique au DataFrame complet des revenus
         if df_filtre.equals(df_revenus):
             # Si les deux DataFrames sont identiques, créer un seul graphique
@@ -197,21 +168,25 @@ class FinancialChart(BnpParibasDatabase):
         else:
             # Si les DataFrames ne sont pas identiques, créer deux graphiques
             fig_soleil_revenus = self.__create_pie_chart(df=df_filtre, name="Revenus gagné", save=False)
-            fig_soleil_all_revenus = self.__create_pie_chart(df=df_revenus, name="Revenus gagné + Virements internes", save=False)
-            
+            fig_soleil_all_revenus = self.__create_pie_chart(
+                df=df_revenus, name="Revenus gagné + Virements internes", save=False
+            )
+
             # Création des graphiques combinés dans l'ordre
             self.__create_combined_charts(fig_soleil_revenus, fig_soleil_all_revenus)
-        
+
         # Enregistrer les graphiques dans un fichier
         self.__save_in_file()
 
     def __save_in_file(self):
         """
         Enregistre tous les graphiques générés dans un fichier HTML.
+
         Accepte à la fois :
         - des figures Plotly (go.Figure)
         - du HTML brut (str)
         """
+
         with open(self.__output_file, "w", encoding="utf-8") as f:
             for item in self.__file_highcharts:
                 if isinstance(item, str):
@@ -224,15 +199,14 @@ class FinancialChart(BnpParibasDatabase):
         # Reset après écriture
         self.__file_highcharts = []
 
-
     # --- [ Génération de Graphiques ] ---
     @staticmethod
     def __create_sankey_chart(df_all: pd.DataFrame) -> str:
         """
         Génère le code HTML/JavaScript nécessaire pour afficher un diagramme de Sankey interactif.
 
-        Cette méthode transforme un DataFrame de transactions en une structure de flux 
-        "Source -> Cible" (links) compatible avec Highcharts. Le diagramme visualise 
+        Cette méthode transforme un DataFrame de transactions en une structure de flux
+        "Source -> Cible" (links) compatible avec Highcharts. Le diagramme visualise
         le cycle financier selon trois niveaux :
         1. Origines des revenus -> Nœud central "Revenus".
         2. Nœud central "Revenus" -> Catégories de dépenses.
@@ -245,38 +219,50 @@ class FinancialChart(BnpParibasDatabase):
         - Formatage des montants (valeurs absolues pour les dépenses et arrondi à 2 décimales).
 
         Args:
-            df_all (pd.DataFrame): Données brutes contenant au minimum les colonnes 
+            df_all (pd.DataFrame): Données brutes contenant au minimum les colonnes
                                    ['year', 'category', 'sub_category', 'amount'].
 
         Returns:
-            str: Bloc de code HTML contenant le conteneur du graphique, le sélecteur 
+            str: Bloc de code HTML contenant le conteneur du graphique, le sélecteur
                  d'année et le script JavaScript Highcharts injecté avec les données JSON.
         """
+
         # Génération d'un ID unique
-        graph_id = "sankey_" + str(uuid.uuid4()).replace('-', '_')
+        graph_id = "sankey_" + str(uuid.uuid4()).replace("-", "_")
 
         # Tri des années : reverse=True pour avoir la plus récente en premier
-        years = sorted([int(y) for y in df_all['year'].unique()], reverse=True)
+        years = sorted([int(y) for y in df_all["year"].unique()], reverse=True)
         multiple_years = len(years) > 1
 
         df_copy = df_all.copy()
-        df_copy['operation_date'] = df_copy['operation_date'].astype(str)
-        df_copy['amount'] = df_copy['amount'].astype(float)
-        df_copy['year'] = df_copy['year'].astype(int)
-        data_json = json.dumps(df_copy.to_dict(orient='records'), ensure_ascii=False)
+        df_copy["operation_date"] = df_copy["operation_date"].astype(str)
+        df_copy["amount"] = df_copy["amount"].astype(float)
+        df_copy["year"] = df_copy["year"].astype(int)
+        data_json = json.dumps(df_copy.to_dict(orient="records"), ensure_ascii=False)
 
         # Couleurs pour les flux
-        colors = ["#544FC5", "#2CAFFE", "#FF7F50", "#32CD32", "#FF69B4","#FFA500","#8A2BE2","#00CED1","#DC143C","#7FFF00"]
+        colors = [
+            "#544FC5",
+            "#2CAFFE",
+            "#FF7F50",
+            "#32CD32",
+            "#FF69B4",
+            "#FFA500",
+            "#8A2BE2",
+            "#00CED1",
+            "#DC143C",
+            "#7FFF00",
+        ]
 
         html = ""
         if multiple_years:
-            html += '<h2>Choisir l\'année pour Sankey :</h2>'
+            html += "<h2>Choisir l'année pour Sankey :</h2>"
             html += f'<select id="sankeyYearSelect_{graph_id}">'
             for i, y in enumerate(years):
                 # On force "selected" sur le premier élément (l'année la plus récente)
                 is_selected = "selected" if i == 0 else ""
                 html += f'<option value="{y}" {is_selected}>{y}</option>'
-            html += '</select>'
+            html += "</select>"
 
         html += f'<div id="sankeyContainer_{graph_id}" style="width:100%; height:950px; margin-top:20px;"></div>'
 
@@ -391,7 +377,7 @@ class FinancialChart(BnpParibasDatabase):
             </script>
         """
         return html
-    
+
     def __create_pie_chart(self, df: pd.DataFrame, name: str, save: bool = True) -> go.Figure:
         """
         Crée un graphique circulaire (sunburst) représentant la répartition des montants par catégorie et sous-catégorie.
@@ -404,32 +390,35 @@ class FinancialChart(BnpParibasDatabase):
         Returns :
             go.Figure : objet figure Plotly contenant le graphique circulaire généré.
         """
-        labels = [name]
-        parents = ['']
-        values = [df['amount'].sum()]
 
-        for category in df['category'].unique():
+        labels = [name]
+        parents = [""]
+        values = [df["amount"].sum()]
+
+        for category in df["category"].unique():
             labels.append(category)
             parents.append(name)
-            values.append(df[df['category'] == category]['amount'].sum())
+            values.append(df[df["category"] == category]["amount"].sum())
 
-            for type_op in df[df['category'] == category]['sub_category'].unique():
+            for type_op in df[df["category"] == category]["sub_category"].unique():
                 labels.append(type_op)
                 parents.append(category)
-                values.append(df[(df['category'] == category) & (df['sub_category'] == type_op)]['amount'].sum())
+                values.append(df[(df["category"] == category) & (df["sub_category"] == type_op)]["amount"].sum())
 
-        fig = go.Figure(go.Sunburst(
-            labels=labels,
-            parents=parents,
-            values=values,
-            branchvalues='total',
-            textinfo='label+percent entry'
-        ))
+        fig = go.Figure(
+            go.Sunburst(
+                labels=labels,
+                parents=parents,
+                values=values,
+                branchvalues="total",
+                textinfo="label+percent entry",
+            )
+        )
         fig.update_layout(
             showlegend=True,
             width=1800,
             height=900,
-            margin=dict(l=200, r=100, t=50, b=50)
+            margin=dict(l=200, r=100, t=50, b=50),
         )
         if save:
             self.__file_highcharts.append(fig)
@@ -440,8 +429,8 @@ class FinancialChart(BnpParibasDatabase):
         """
         Génère un tableau de bord interactif Highcharts avec bascule Revenus/Dépenses.
 
-        Cette méthode produit un graphique hybride (Colonnes + Courbes) permettant 
-        d'analyser l'évolution financière selon deux axes temporels (Annuel ou Mensuel) 
+        Cette méthode produit un graphique hybride (Colonnes + Courbes) permettant
+        d'analyser l'évolution financière selon deux axes temporels (Annuel ou Mensuel)
         et deux niveaux de granularité (Total ou par Catégorie).
 
         Architecture des données :
@@ -449,7 +438,7 @@ class FinancialChart(BnpParibasDatabase):
         2.  **Modes de vue** :
             -   'Par année' : Affiche l'évolution globale sur toutes les années disponibles.
             -   'Par mois' : Affiche le détail des 12 mois pour une année spécifique.
-        3.  **Granularité** : 
+        3.  **Granularité** :
             -   Vue Totale : Une seule barre par période (somme agrégée).
             -   Vue Catégories : Barres empilées (stacked columns) triées par ordre alphabétique.
         4.  **Indicateurs d'analyse** :
@@ -457,52 +446,77 @@ class FinancialChart(BnpParibasDatabase):
             -   Ligne de variation (%) : Calcule le taux de croissance entre deux périodes.
 
         Args:
-            df_all (pd.DataFrame): DataFrame contenant les colonnes 'operation_date', 
+            df_all (pd.DataFrame): DataFrame contenant les colonnes 'operation_date',
                                    'category', 'sub_category' et 'amount'.
 
         Returns:
-            str: Fragment HTML/JS complet incluant le CSS personnalisé (switch toggle), 
+            str: Fragment HTML/JS complet incluant le CSS personnalisé (switch toggle),
                  les contrôles d'interface (radio, select) et la logique Highcharts.
         """
+
         # Préparation des dates
-        df_all["operation_date"] = pd.to_datetime(df_all["operation_date"]) 
+        df_all["operation_date"] = pd.to_datetime(df_all["operation_date"])
         df_all["year"] = df_all["operation_date"].dt.year
         df_all["month"] = df_all["operation_date"].dt.month
 
-        # MODIFICATION : Tri décroissant pour le menu (le graphique gère son propre tri)
+        # Tri décroissant pour le menu (le graphique gère son propre tri)
         years = sorted(df_all["year"].unique().tolist(), reverse=True)
-        months_labels = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc']
+        months_labels = [
+            "Jan",
+            "Fév",
+            "Mar",
+            "Avr",
+            "Mai",
+            "Juin",
+            "Juil",
+            "Août",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Déc",
+        ]
 
         # --- Séparation des données : Revenus vs Dépenses ---
-        df_rev = df_all[df_all['category'] == 'Revenus']
-        df_dep = df_all[df_all['category'] != 'Revenus']
+        df_rev = df_all[df_all["category"] == "Revenus"]
+        df_dep = df_all[df_all["category"] != "Revenus"]
 
         datasets = {
-            'revenus': {'data': {}, 'categories': sorted(df_rev['sub_category'].unique().tolist())},
-            'depenses': {'data': {}, 'categories': sorted(df_dep['category'].unique().tolist())}
+            "revenus": {
+                "data": {},
+                "categories": sorted(df_rev["sub_category"].unique().tolist()),
+            },
+            "depenses": {
+                "data": {},
+                "categories": sorted(df_dep["category"].unique().tolist()),
+            },
         }
 
         def fill_data(sub_df, type_key, is_revenu):
-            cat_col = 'sub_category' if is_revenu else 'category'
-            for cat in datasets[type_key]['categories']:
-                datasets[type_key]['data'][cat] = {}
+            cat_col = "sub_category" if is_revenu else "category"
+            for cat in datasets[type_key]["categories"]:
+                datasets[type_key]["data"][cat] = {}
                 # On utilise years_graph (croissant) pour la structure de données interne
                 years_internal = sorted(years)
                 for y in years_internal:
-                    vals = sub_df[(sub_df[cat_col]==cat) & (sub_df.year==y)] \
-                        .groupby('month')['amount'].sum().abs() \
-                        .reindex(range(1,13), fill_value=0).tolist()
-                    datasets[type_key]['data'][cat][y] = [round(v, 2) for v in vals]
+                    vals = (
+                        sub_df[(sub_df[cat_col] == cat) & (sub_df.year == y)]
+                        .groupby("month")["amount"]
+                        .sum()
+                        .abs()
+                        .reindex(range(1, 13), fill_value=0)
+                        .tolist()
+                    )
+                    datasets[type_key]["data"][cat][y] = [round(v, 2) for v in vals]
 
-        fill_data(df_rev, 'revenus', True)
-        fill_data(df_dep, 'depenses', False)
+        fill_data(df_rev, "revenus", True)
+        fill_data(df_dep, "depenses", False)
 
         data_json = json.dumps(datasets)
         months_json = json.dumps(months_labels)
         # On passe les années triées de façon croissante pour l'axe X du graphique
-        years_json = json.dumps(sorted(years)) 
+        years_json = json.dumps(sorted(years))
 
-        graph_id = "switch_" + str(uuid.uuid4()).replace('-', '_')
+        graph_id = "switch_" + str(uuid.uuid4()).replace("-", "_")
 
         html = f"""
             <style>
@@ -531,7 +545,7 @@ class FinancialChart(BnpParibasDatabase):
                     <label style="margin-left:10px;"><input type="radio" name="mode_{graph_id}" value="month"> Par mois</label>
                     
                     <select id="yearSelect_{graph_id}" style="display:none; margin-left:10px;">
-                        {''.join([f'<option value="{y}" {"selected" if i==0 else ""}>{y}</option>' for i, y in enumerate(years)])}
+                        {"".join([f'<option value="{y}" {"selected" if i == 0 else ""}>{y}</option>' for i, y in enumerate(years)])}
                     </select>
 
                     <label style="margin-left:20px;">
@@ -715,9 +729,9 @@ class FinancialChart(BnpParibasDatabase):
                             formatter: function() {{
                                 let s = `<span style="font-size: 10px">${{this.key}}</span><br/>`;
                                 if (this.series.name === 'Variation') {{
-                                    s += `<span style="color:${{this.y>=0?'#2ecc71':'#ff4d4d'}}">\u25CF</span> ${{this.series.name}}: <span style="color:${{this.y>=0?'#2ecc71':'#ff4d4d'}}"><b>${{this.y>0?'+':''}}${{this.y.toFixed(1)}}%</span></b>`;
+                                    s += `<span style="color:${{this.y>=0?'#2ecc71':'#ff4d4d'}}">\u25cf</span> ${{this.series.name}}: <span style="color:${{this.y>=0?'#2ecc71':'#ff4d4d'}}"><b>${{this.y>0?'+':''}}${{this.y.toFixed(1)}}%</span></b>`;
                                 }} else {{
-                                    s += `<span style="color:${{this.series.color}}">\u25CF</span> ${{this.series.name}}: <b>${{this.y.toFixed(2)}} €</b>`;
+                                    s += `<span style="color:${{this.series.color}}">\u25cf</span> ${{this.series.name}}: <b>${{this.y.toFixed(2)}} €</b>`;
                                 }}
                                 return s;
                             }}
@@ -762,7 +776,7 @@ class FinancialChart(BnpParibasDatabase):
             </script>
             """
         return html
-    
+
     def __create_combined_charts(self, fig1: go.Figure, fig2: go.Figure, save: bool = True) -> go.Figure:
         """
         Combine deux graphiques sunburst côte à côte dans une seule figure.
@@ -775,10 +789,8 @@ class FinancialChart(BnpParibasDatabase):
         Returns :
             go.Figure : objet figure Plotly contenant les deux graphiques combinés.
         """
-        fig_combined = make_subplots(
-            rows=1, cols=2,
-            specs=[[{"type": "sunburst"}, {"type": "sunburst"}]]
-        )
+
+        fig_combined = make_subplots(rows=1, cols=2, specs=[[{"type": "sunburst"}, {"type": "sunburst"}]])
 
         for trace in fig1.data:
             fig_combined.add_trace(trace, row=1, col=1)
@@ -789,7 +801,7 @@ class FinancialChart(BnpParibasDatabase):
             showlegend=True,
             width=1800,
             height=900,
-            margin=dict(l=200, r=100, t=50, b=50)
+            margin=dict(l=200, r=100, t=50, b=50),
         )
         if save:
             self.__file_highcharts.append(fig_combined)
@@ -800,20 +812,20 @@ class FinancialChart(BnpParibasDatabase):
         """
         Génère un histogramme comparatif empilé (Stacked Bar Chart) pour l'analyse globale.
 
-        Cette méthode est le pivot de l'analyse comparative. Elle permet de visualiser 
-        simultanément les flux entrants (Revenus) et sortants (Dépenses) afin d'en 
+        Cette méthode est le pivot de l'analyse comparative. Elle permet de visualiser
+        simultanément les flux entrants (Revenus) et sortants (Dépenses) afin d'en
         déduire l'épargne nette.
 
         Logique de construction :
-        1.  **Agrégation multiniveau** : Les données sont groupées par catégorie, 
-            sous-catégorie, puis par année et mois pour créer un dictionnaire JSON 
+        1.  **Agrégation multiniveau** : Les données sont groupées par catégorie,
+            sous-catégorie, puis par année et mois pour créer un dictionnaire JSON
             profond consommé par le front-end.
-        2.  **Double Empilage (Stacks)** : 
+        2.  **Double Empilage (Stacks)** :
             -   'revenus' : Toutes les séries de revenus sont empilées dans une colonne dédiée.
             -   'depenses' : Toutes les catégories de dépenses sont empilées dans une seconde colonne.
             -   Cela permet de comparer visuellement la hauteur des deux colonnes côte à côte.
-        3.  **Indicateur d'Épargne Nette** : Une ligne dynamique calcule la différence 
-            (Revenus - Dépenses) pour chaque période. La ligne change de couleur 
+        3.  **Indicateur d'Épargne Nette** : Une ligne dynamique calcule la différence
+            (Revenus - Dépenses) pour chaque période. La ligne change de couleur
             automatiquement (Rouge si négatif, Vert si positif).
         4.  **Modes d'affichage** :
             -   Vue Annuelle : Évolution globale sur l'historique complet.
@@ -821,25 +833,32 @@ class FinancialChart(BnpParibasDatabase):
             -   Vue Détaillée : Option pour ventiler les colonnes par catégories/sous-catégories.
 
         Args:
-            df_all (pd.DataFrame): Données transactionnelles avec colonnes 'operation_date', 
+            df_all (pd.DataFrame): Données transactionnelles avec colonnes 'operation_date',
                                    'category', 'sub_categories' et 'amount'.
 
         Returns:
-            str: Code HTML/JS complet intégrant le sélecteur d'année, les options de vue 
+            str: Code HTML/JS complet intégrant le sélecteur d'année, les options de vue
                  et le graphique Highcharts avec calcul automatique de l'épargne.
         """
+
         df_all["year"] = df_all["operation_date"].dt.year
         df_all["month"] = df_all["operation_date"].dt.month
 
         # Construction de la structure DATA
         data_dict = {}
-        for cat, cat_df in df_all.groupby('category'):
+        for cat, cat_df in df_all.groupby("category"):
             data_dict[cat] = {}
             for sub_cat, sub_df in cat_df.groupby("sub_category"):
                 data_dict[cat][sub_cat] = {}
                 for year, year_df in sub_df.groupby("year"):
                     # Calcul de la somme mensuelle.
-                    monthly = year_df.groupby(year_df["operation_date"].dt.month)['amount'].sum().abs().reindex(range(1,13), fill_value=0).tolist()
+                    monthly = (
+                        year_df.groupby(year_df["operation_date"].dt.month)["amount"]
+                        .sum()
+                        .abs()
+                        .reindex(range(1, 13), fill_value=0)
+                        .tolist()
+                    )
                     data_dict[cat][sub_cat][int(year)] = [round(m, 2) for m in monthly]
 
         json_data = json.dumps(data_dict, indent=2)
@@ -992,7 +1011,7 @@ class FinancialChart(BnpParibasDatabase):
                                     color_montant = this.y >= 0 ? '#00E272' : '#FF0000';
                                 }}
 
-                                let tooltipHtml = `<span style="color:${{color_montant}}">\u25CF</span> <b>${{this.series.name}}</b><br/>` +
+                                let tooltipHtml = `<span style="color:${{color_montant}}">\u25cf</span> <b>${{this.series.name}}</b><br/>` +
                                                 `Montant: <b style="color:${{color_montant}}">${{this.y}} €</b>`;
                                 
                                 if(this.series.name === 'Épargne nette' && viewMode === 'years') {{
@@ -1050,10 +1069,15 @@ class FinancialChart(BnpParibasDatabase):
             </script>
         """
         return html
-    
+
     def __generate_html_file(self, df_all: pd.DataFrame):
         """Assemble et compile l'ensemble des visualisations dans un document HTML unique."""
-        js_files = ["src/static/js/highcharts.js", "src/static/js/sankey.js", "src/static/js/exporting.js"]
+
+        js_files = [
+            "src/static/js/highcharts.js",
+            "src/static/js/sankey.js",
+            "src/static/js/exporting.js",
+        ]
         js_content = ""
 
         for js_file in js_files:
@@ -1079,25 +1103,3 @@ class FinancialChart(BnpParibasDatabase):
         html += "</body></html>"
 
         self.__file_highcharts.append(html)
-
-
-    # --- [ Récupération des Données ] ---
-    @staticmethod
-    def __get_categorized_month_operations(df_all: pd.DataFrame) -> dict:
-        """
-        Regroupe les opérations catégorisées par mois.
-
-        Args :
-        - df_all (pd.DataFrame) : DataFrame contenant les opérations catégorisées, 
-                                avec une colonne 'operation_date' de type datetime.
-
-        Returns :
-        - dict : dictionnaire { mois (str) : DataFrame des opérations de ce mois }
-        """
-        df_all["month"] = df_all["operation_date"].dt.strftime('%m')
-        month_dict = {}
-        
-        for year, df_annee in df_all.groupby("month"):
-            month_dict[year] = df_annee.reset_index(drop=True)
-
-        return month_dict
