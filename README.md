@@ -1,44 +1,69 @@
-# Financial Data Visualizer
+# Financial Data Visualizer - Dashboard 📊
 
-![Status](https://img.shields.io/badge/License-All%20Rights%20Reserved-red)
-![Language](https://img.shields.io/badge/Language-Python-blue)
-
-## ⚠️ Propriété Intellectuelle / Intellectual Property
-
-**Copyright (c) 2026 BrunBrun. All rights reserved.**
-
-Ce projet est publié uniquement à des fins de démonstration de compétences (portfolio). 
-**Toute copie, modification ou utilisation commerciale est strictement interdite.** Veuillez vous référer au fichier [LICENSE](./LICENSE) pour plus de détails.
+**Financial Data Visualizer** est un outil de gestion et d'analyse financière permettant de transformer des exports bancaires bruts en tableaux de bord interactifs. Le projet permet de centraliser vos flux financiers, de les catégoriser finement et d'obtenir une vision claire de votre santé budgétaire via des rendus HTML dynamiques ou des rapports Excel.
 
 ---
 
-## 📝 Description
+## 📸 Aperçu du projet
 
-**Financial Data Visualizer** est une application conçue pour transformer des données brutes en insights clairs. Elle permet aux utilisateurs de suivre leur santé financière à travers une interface intuitive et des rapports automatisés.
+### Dashboard d'accueil
+![Accueil](assets/accueil.png)
 
-L'application traite des fichiers Excel sources pour catégoriser les transactions et générer des visualisations graphiques avancées.
-
-## 🚀 Fonctionnalités
-
-* **Importation Excel :** Lecture et traitement de fichiers de données financières.
-* **Catégorisation Automatique :** Organisation des flux financiers par types de dépenses/revenus.
-* **Visualisation Graphique :** Génération de graphiques dynamiques pour une analyse rapide.
-* **Rapports Financiers :** Exportation de synthèses détaillées.
-* **Mode Exécutable :** Utilisation simplifiée via un fichier `.exe` avec un menu interactif.
-
-## 🛠️ Utilisation
-
-Une fois l'exécutable lancé, l'utilisateur a deux options principales :
-
-1.  **Ajouter des données :** Importer de nouvelles informations financières via un fichier Excel pré-formaté.
-2.  **Visualiser les données :** Consulter les graphiques et les rapports basés sur les données déjà enregistrées.
-
-## 💻 Standard de Développement
-
-Ce projet respecte un standard de développement rigoureux :
-* **Nomenclature :** Code entièrement rédigé en anglais (variables, classes, méthodes).
-* **Documentation :** Docstrings complets et commentaires internes rédigés en **Français**.
-* **Architecture :** Code modulaire respectant les principes **SOLID** et **DRY**.
-* **Encapsulation :** Respect strict de la visibilité des méthodes (Public, Protected, Private).
+### Analyses et Graphiques
+| Répartition (Donuts) | Flux (Sankey) |
+| :---: | :---: |
+| ![Distribution](assets/distribution.png) | ![Sankey](assets/sankey.png) |
 
 ---
+
+## 🛠️ Configuration & Utilisation
+
+Pour que l'analyse soit pertinente, vous devez passer par l'étape de configuration initiale dans l'application :
+
+1.  **Source Bancaire** : Sélectionnez l'établissement bancaire correspondant à vos fichiers (BNP Paribas, Boursorama, Crédit Agricole, etc.). Cette étape est cruciale pour que le moteur d'extraction puisse lire correctement vos colonnes Excel.
+2.  **Architecture des Catégories** : Définissez vos propres catégories et sous-catégories (ex: *Alimentation > Boulangerie & Snacks*). 
+    * *Note : Le projet supporte une gestion complète des suppressions et ajouts pour coller à vos habitudes de vie.*
+
+| Menu Configuration | Gestion des Catégories |
+| :---: | :---: |
+| ![Configuration](assets/configuration.png) | ![Categories](assets/configuration_categories.png) |
+
+---
+
+## 📉 Visualisation & Analyse
+
+L'outil génère automatiquement des graphiques d'évolution pour suivre vos dépenses et revenus au fil des mois et des années.
+
+<video src="assets/analyse_incomes_expenses_global.mp4" width="100%" controls></video>
+*Évolution globale des flux financiers (Revenus vs Dépenses).*
+
+<video src="assets/analyse_incomes_expenses.mp4" width="100%" controls></video>
+*Zoom par catégories et sous-catégories.*
+
+---
+
+## 📑 Rapports Excel
+
+En plus de l'interface visuelle, le projet génère un fichier **Budget_2026.xlsx** parfaitement formaté pour ceux qui préfèrent manipuler les données brutes ou conserver une archive statique.
+
+![Rapport Excel](assets/excel.png)
+
+---
+
+## 🚀 Road Map (Futur du projet)
+
+Actuellement focalisé sur l'analyse des **opérations courantes**, le projet évolue pour devenir une solution de gestion de patrimoine complète :
+* ➕ **Module Bourse** : Suivi des placements et investissements (actions, ETF).
+* ➕ **Patrimoine Global** : Visualisation consolidée (Comptes courants + Épargne + Bourse).
+
+## 🚀 Installation
+
+```bash
+# Cloner le dépôt
+git clone [https://github.com/votre-utilisateur/financial-data-visualizer.git](https://github.com/votre-utilisateur/financial-data-visualizer.git)
+
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Lancer l'application
+python main.py
