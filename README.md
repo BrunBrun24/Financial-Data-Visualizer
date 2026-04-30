@@ -50,8 +50,10 @@ Pour que l'analyse soit pertinente, vous devez passer par l'étape de configurat
 L'outil génère automatiquement des graphiques d'évolution pour suivre vos dépenses et revenus au fil des mois et des années.
 
 *Évolution globale des flux financiers (Revenus vs Dépenses).*
+<video src="https://github.com/user-attachments/assets/63da86e4-b6c0-46cc-a75c-7b29ef818b21" width="100%" controls></video>
 
 *Zoom par catégories et sous-catégories.*
+<video src="https://github.com/user-attachments/assets/4ad2a5dc-c363-45b0-8366-ac40f0ee8934" width="100%" controls></video>
 
 ---
 
