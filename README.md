@@ -13,6 +13,21 @@
 | Répartition (Donuts) | Flux (Sankey) |
 | :---: | :---: |
 | ![Distribution](assets/distribution.png) | ![Sankey](assets/sankey.png) |
+# Financial Data Visualizer - Dashboard 📊
+
+**Financial Data Visualizer** est un outil de gestion et d'analyse financière permettant de transformer des exports bancaires bruts en tableaux de bord interactifs. Le projet permet de centraliser vos flux financiers, de les catégoriser finement et d'obtenir une vision claire de votre santé budgétaire via des rendus HTML dynamiques ou des rapports Excel.
+
+---
+
+## 📸 Aperçu du projet
+
+### Dashboard d'accueil
+![Accueil](assets/accueil.png)
+
+### Analyses et Graphiques
+| Répartition (Donuts) | Flux (Sankey) |
+| :---: | :---: |
+| ![Distribution](assets/distribution.png) | ![Sankey](assets/sankey.png) |
 
 ---
 
