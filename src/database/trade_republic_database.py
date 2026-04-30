@@ -7,11 +7,10 @@ from datetime import datetime
 import pandas as pd
 import yfinance as yf
 
-from .base_database import BaseDatabase
 from .database import Database
 
 
-class TradeRepublicDatabase(BaseDatabase, Database):
+class TradeRepublicDatabase(Database):
     """
     Cette classe gère la persistance et la structure des données financières
     spécifiques à Trade Republic dans une base de données SQLite.
@@ -30,7 +29,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
     def _create_database(self):
         """Initialise la structure de la base de données en utilisant la connexion sécurisée."""
 
-        with self._get_db() as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
 
             cursor.executescript("""
@@ -130,7 +129,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         query_reset_seq = "DELETE FROM sqlite_sequence WHERE name='performances'"
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query_delete)
                 cursor.execute(query_reset_seq)
@@ -301,7 +300,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, data)
 
@@ -331,7 +330,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.executemany(query, div_data)
 
@@ -357,7 +356,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.executemany(query, split_data)
 
@@ -425,7 +424,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 data_to_insert = transactions_df.to_dict(orient="records")
                 conn.executemany(query, data_to_insert)
 
@@ -469,7 +468,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 # Transformation en liste de dictionnaires pour une insertion groupée efficace
                 records = melted_df.to_dict(orient="records")
                 conn.executemany(query, records)
@@ -558,7 +557,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         grouped_tickers = defaultdict(list)
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, tickers)
                 results = cursor.fetchall()
@@ -579,7 +578,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         query = "UPDATE file SET processed = 1 WHERE id = ?"
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, (file_id,))
 
@@ -627,7 +626,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         """
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, (file_bytes, table_name))
 
@@ -648,7 +647,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         query = "SELECT 1 FROM file WHERE file = ? LIMIT 1"
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
 
                 # Recherche par contenu binaire exact (BLOB)
@@ -671,7 +670,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         query = "SELECT ticker FROM company"
 
         try:
-            with self._get_db() as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query)
 
@@ -918,7 +917,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
     def _get_unprocessed_files(self) -> list:
         """Récupère les données binaires des PDF non traités"""
 
-        with self._get_db() as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -1059,7 +1058,7 @@ class TradeRepublicDatabase(BaseDatabase, Database):
         query += " ORDER BY portfolio_name ASC, ticker ASC, metric_type ASC, date ASC"
 
         # Extraction des données
-        with self._get_db() as conn:
+        with self._get_connection() as conn:
             df = pd.read_sql_query(query, conn, params=params)
 
             if not df.empty:

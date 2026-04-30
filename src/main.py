@@ -1,6 +1,6 @@
-from dashboard.dashboard import FinancialVisualizerApp
+from dashboard.dashboard import Dashboard
 
 
 if __name__ == "__main__":
-    app = FinancialVisualizerApp()
+    app = Dashboard()
     app.mainloop()

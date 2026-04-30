@@ -4,18 +4,17 @@ from typing import Any
 import pandas as pd
 import xlsxwriter
 
+from config import load_config
 from database.bnp_paribas_database import BnpParibasDatabase
 
 
-class ExcelReportGenerator(BnpParibasDatabase):
+class ExcelReportGenerator:
     """Générateur de rapports financiers au format Excel."""
 
-    DESTINATION_PATH = "Bilan"
-
-    def __init__(self, db_path: str, account_name: str):
-        super().__init__(db_path)
-        self.__root_path = f"{self.DESTINATION_PATH}/{account_name}"
-        self.months = [
+    def __init__(self, db: BnpParibasDatabase, account_name: str) -> None:
+        self.__db = db
+        self.__root_path = os.path.join(load_config()["destination_path"], account_name)
+        self.__months = [
             "JAN",
             "FÉV",
             "MAR",
@@ -35,10 +34,10 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
         os.makedirs(self.__root_path, exist_ok=True)
 
-    def generate_all_reports(self) -> None:
+    def generate_all_reports(self, account_id: int) -> None:
         """Génère les rapports pour chaque année présente en base."""
 
-        df = self._get_categorized_operations_df()
+        df = self.__db.get_categorized_operations_df(account_id)
 
         if df.empty:
             return
@@ -47,12 +46,12 @@ class ExcelReportGenerator(BnpParibasDatabase):
         years = sorted(df["operation_date"].dt.year.unique())
 
         for year in years:
-            self.__generate_annual_report(year)
+            self.__generate_annual_report(account_id, year)
 
-    def __generate_annual_report(self, year: int) -> None:
+    def __generate_annual_report(self, account_id: int, year: int) -> None:
         """Génère le rapport Excel avec colonnes décalées et tri décroissant."""
 
-        data_summary = self.__get_monthly_amounts(year)
+        data_summary = self.__get_monthly_amounts(account_id, year)
         structure = self.__get_filtered_structure(data_summary)
 
         if not structure:
@@ -75,11 +74,11 @@ class ExcelReportGenerator(BnpParibasDatabase):
         ws.merge_range("A1:C1", "BUDGET PERSONNEL", fmt["title"])
         ws.merge_range("O1:P1", str(year), fmt["year_tag"])
 
-        for col, month in enumerate(self.months):
+        for col, month in enumerate(self.__months):
             ws.write(3, col + 1, month, fmt["header_month"])
 
         row = 4
-        sections_totals = {"RECETTES": [], "DÉPENSES": []}
+        sections_totals = {"REVENUS": [], "DÉPENSES": []}
         current_main = ""
 
         # Remplissage du corps du tableau
@@ -142,7 +141,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
             col_let = xlsxwriter.utility.xl_col_to_name(col)
             rec_f = (
-                "+".join([f"{col_let}{r}" for r in sections_totals["RECETTES"]]) if sections_totals["RECETTES"] else "0"
+                "+".join([f"{col_let}{r}" for r in sections_totals["REVENUS"]]) if sections_totals["REVENUS"] else "0"
             )
             dep_f = (
                 "+".join([f"{col_let}{r}" for r in sections_totals["DÉPENSES"]]) if sections_totals["DÉPENSES"] else "0"
@@ -182,7 +181,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
             else:
                 row_cursor += 1
                 target_total = (
-                    f"O{row_total_recettes + 1}" if current_main == "RECETTES" else f"O{row_total_depenses + 1}"
+                    f"O{row_total_recettes + 1}" if current_main == "REVENUS" else f"O{row_total_depenses + 1}"
                 )
 
                 for _ in section["items"]:
@@ -299,10 +298,10 @@ class ExcelReportGenerator(BnpParibasDatabase):
             ),
         }
 
-    def __get_monthly_amounts(self, year: int) -> pd.DataFrame:
+    def __get_monthly_amounts(self, account_id: int, year: int) -> pd.DataFrame:
         """Récupère les sommes des opérations groupées par mois et par sous-catégorie."""
 
-        df = self._get_categorized_operations_df()
+        df = self.__db.get_categorized_operations_df(account_id)
         if df.empty:
             return pd.DataFrame(columns=["sub_category", "month_idx", "amount"])
 
@@ -318,7 +317,7 @@ class ExcelReportGenerator(BnpParibasDatabase):
     def __get_filtered_structure(self, data_summary: pd.DataFrame) -> list:
         """Filtre et trie la structure par montant annuel décroissant."""
 
-        df_sub = self._get_all_operations("sub_categories")
+        df_sub = self.__db.get_all_operations("sub_categories")
         if df_sub.empty:
             return []
 
@@ -327,9 +326,9 @@ class ExcelReportGenerator(BnpParibasDatabase):
 
         full_structure = []
         categories = df_sub["parent_category"].unique()
-        recettes_names = ["Revenus", "Recettes"]
+        recettes_names = self.__db.get_categories_hierarchy()[0].keys()
 
-        for main_group_name, target_cats in [("RECETTES", recettes_names), ("DÉPENSES", None)]:
+        for main_group_name, target_cats in [("REVENUS", recettes_names), ("DÉPENSES", None)]:
             group_content = []
             current_cats = (
                 [c for c in categories if c in target_cats]
