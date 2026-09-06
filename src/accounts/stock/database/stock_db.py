@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timedelta
 from tkinter import messagebox
 
@@ -36,10 +37,10 @@ class StockDB(DatabaseBase):
             "AUDUSD=X",  # Dollar Australien / US Dollar
             "EURNZD=X",  # Euro / Dollar Néo-Zélandais
             "NZDUSD=X",  # Dollar Néo-Zélandais / US Dollar
-            "^GSPC",     # S&P 500
-            "^FCHI",     # CAC 40
-            "^IXIC",     # NASDAQ
-            "URTH",      # MSCI World
+            "^GSPC",  # S&P 500
+            "^FCHI",  # CAC 40
+            "^IXIC",  # NASDAQ
+            "URTH",  # MSCI World
         ]
 
         # Ajoute les données de conversion pour chaque symbol
@@ -123,6 +124,7 @@ class StockDB(DatabaseBase):
                 pt.fee,
                 pt.price,
                 pt.shares,
+                pt.comment,
                 p.currency AS account_currency
             FROM portfolio_transaction pt
             JOIN portfolio p ON pt.portfolio_id = p.id
@@ -590,14 +592,20 @@ class StockDB(DatabaseBase):
             return
 
         df = transactions.copy()
+        if "comment" not in df.columns:
+            df["comment"] = None
+
+        df = transactions.copy()
         records = df.to_dict(orient="records")
         query = """
             INSERT INTO portfolio_transaction (
                 portfolio_id, portfolio_ticker_id, type, date, fx_rate,
-                original_amount, original_price, original_fee, amount, price, fee
+                original_amount, original_price, original_fee, amount, price, fee,
+                comment
             ) VALUES (
                 :portfolio_id, :portfolio_ticker_id, :type, :date, :fx_rate,
-                :original_amount, :original_price, :original_fee, :amount, :price, :fee
+                :original_amount, :original_price, :original_fee, :amount, :price, :fee, 
+                :comment
             )
             ON CONFLICT DO UPDATE SET
                 original_amount = portfolio_transaction.original_amount + excluded.original_amount,
@@ -611,17 +619,18 @@ class StockDB(DatabaseBase):
             cursor.executemany(query, records)
             conn.commit()
 
-    def update_transaction(self, updated_data: dict) -> None:
+    def update_transaction(self, updated_data: dict) -> bool:
         transaction_id = updated_data.get("transaction_id") or updated_data.get("id")
 
         if not transaction_id:
-            return
+            return False
 
         query = """
             UPDATE portfolio_transaction
             SET portfolio_ticker_id = ?,
                 type = ?,
                 date = ?,
+                comment = ?,
                 original_amount = ?,
                 original_price = ?,
                 original_fee = ?,
@@ -640,6 +649,7 @@ class StockDB(DatabaseBase):
                     updated_data.get("portfolio_ticker_id"),
                     updated_data.get("type", "buy"),
                     updated_data.get("date"),
+                    updated_data.get("comment"),
                     updated_data.get("original_amount"),
                     updated_data.get("original_price"),
                     updated_data.get("original_fee"),
@@ -702,6 +712,48 @@ class StockDB(DatabaseBase):
             cursor = conn.cursor()
             cursor.execute(query, (amount, portfolio_id))
 
+    def add_transaction_attachment(
+        self, transaction_id: int, file_bytes: bytes, file_name: str, file_type: str = None
+    ) -> None:
+        """Enregistre un fichier sous forme binaire (BLOB) lié à une transaction boursière."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO transaction_attachments (transaction_id, file_data, file_name, file_type) VALUES (?, ?, ?, ?)",
+                (transaction_id, sqlite3.Binary(file_bytes), file_name, file_type),
+            )
+            conn.commit()
+
+    def get_transaction_attachments(self, transaction_id: int) -> list[dict]:
+        """Récupère la liste des métadonnées des pièces justificatives d'une transaction."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, file_name, file_type FROM transaction_attachments WHERE transaction_id = ?",
+                (transaction_id,),
+            )
+            rows = cursor.fetchall()
+            return [{"id": row[0], "file_name": row[1], "file_type": row[2]} for row in rows]
+
+    def get_transaction_attachment_data(self, attachment_id: int) -> dict:
+        """Récupère le contenu binaire et les détails d'une pièce justificative boursière."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_data, file_name, file_type FROM transaction_attachments WHERE id = ?", (attachment_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {"file_data": row[0], "file_name": row[1], "file_type": row[2]}
+            return None
+
+    def delete_transaction_attachment(self, attachment_id: int) -> None:
+        """Supprime une pièce justificative liée à une transaction."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM transaction_attachments WHERE id = ?", (attachment_id,))
+            conn.commit()
+
     def _create_database(self) -> None:
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -756,6 +808,16 @@ class StockDB(DatabaseBase):
                     CONSTRAINT uq_portfolio_ticker UNIQUE (portfolio_id, ticker)
                 );
 
+                CREATE TABLE IF NOT EXISTS transaction_attachments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_id INTEGER NOT NULL,
+                    file_data BLOB NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_type TEXT,
+                    
+                    FOREIGN KEY (transaction_id) REFERENCES portfolio_transaction(id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS portfolio_transaction (
                     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
                     portfolio_id        INT NOT NULL REFERENCES portfolio(id) ON DELETE CASCADE,
@@ -763,6 +825,7 @@ class StockDB(DatabaseBase):
                     type                VARCHAR(10) NOT NULL,
                     date                DATE NOT NULL,
                     fx_rate             NUMERIC(10, 6) DEFAULT 1.0, 
+                    comment             TEXT,
                     
                     -- Données sur le ticker dans sa devise
                     original_amount     NUMERIC(12, 2) NOT NULL,

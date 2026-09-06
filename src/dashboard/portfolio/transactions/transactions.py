@@ -1,8 +1,10 @@
+import os
 import shutil
+import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 import numpy as np
@@ -30,23 +32,28 @@ from config import load_config
 from dashboard.portfolio.transactions.components.transaction_edit_window import TransactionEditWindow
 from utils.data_utils import remove_accents
 from utils.loading_popup import LoadingPopup
+from utils.window_utils import center_window_on_screen
 
 
 class Transactions:
     def __init__(self, master: ctk.CTkFrame, controller) -> None:
+        """Initialise le composant Transactions et ses filtres/sélections."""
         self.__master = master
         self.__controller = controller
         self.__theme = controller.get_theme()
         self.__bank_db = controller.get_bank_db()
         self.__stock_db = controller.get_stock_db()
         self.__config = controller.get_config()
-        self.__sort_column = "date"
-        self.__sort_ascending = False
+        self._sort_column = "date"
+        self._sort_ascending = False
+        self.__selected_transaction_ids = set()
+        self.__column_filters = {}
 
     def display(self, stock_portfolio_row: pd.Series, page: int = 1) -> None:
         """Initialise la structure fixe (Header, Actions) et lance le chargement du tableau."""
 
         self.__controller.destroy_widgets()
+        self.__selected_transaction_ids.clear()
 
         # Header de navigation
         nav_header = ctk.CTkFrame(self.__master, fg_color="transparent")
@@ -69,24 +76,10 @@ class Transactions:
         ).pack(pady=(5, 30))
 
         # Barre d'actions
-        account_actions_bar = ctk.CTkFrame(self.__master, fg_color="transparent")
-        account_actions_bar.pack(fill="x", padx=20, pady=10)
+        self.__account_actions_bar = ctk.CTkFrame(self.__master, fg_color="transparent")
+        self.__account_actions_bar.pack(fill="x", padx=20, pady=10)
 
-        ctk.CTkButton(
-            account_actions_bar,
-            text="Importer des transactions",
-            fg_color=self.__theme["green"]["fg_color"],
-            hover_color=self.__theme["green"]["hover_color"],
-            command=lambda: self.__handle_import_process(stock_portfolio_row),
-        ).pack(side="left", padx=5)
-
-        ctk.CTkButton(
-            account_actions_bar,
-            text="Ajouter une transaction",
-            fg_color=self.__theme["green"]["fg_color"],
-            hover_color=self.__theme["green"]["hover_color"],
-            command=lambda: self.__handle_add_transaction(stock_portfolio_row),
-        ).pack(side="left", padx=5)
+        self.__build_actions_bar(stock_portfolio_row)
 
         # Zone d'affichage
         self.__table_container_wrapper = ctk.CTkFrame(self.__master, fg_color="transparent")
@@ -95,10 +88,63 @@ class Transactions:
         # Premier chargement du tableau
         self.__update_table_content(stock_portfolio_row, page)
 
-    def __update_table_content(self, stock_portfolio_row: pd.Series, page: int) -> None:
-        """Rafraîchit uniquement le tableau avec une zone de lignes à hauteur fixe."""
+    def __build_actions_bar(self, stock_portfolio_row: pd.Series) -> None:
+        """Construit la barre d'actions dynamiquement selon la sélection."""
+        for widget in self.__account_actions_bar.winfo_children():
+            widget.destroy()
 
-        # Nettoyage du conteneur dynamique
+        ctk.CTkButton(
+            self.__account_actions_bar,
+            text="Importer des transactions",
+            fg_color=self.__theme["green"]["fg_color"],
+            hover_color=self.__theme["green"]["hover_color"],
+            command=lambda: self.__handle_import_process(stock_portfolio_row),
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            self.__account_actions_bar,
+            text="Ajouter une transaction",
+            fg_color=self.__theme["green"]["fg_color"],
+            hover_color=self.__theme["green"]["hover_color"],
+            command=lambda: self.__handle_add_transaction(stock_portfolio_row),
+        ).pack(side="left", padx=5)
+
+        # Bouton de réinitialisation des filtres
+        is_custom_sorted = hasattr(self, "_sort_column") and self._sort_column != "date"
+        has_active_filters = len(self.__column_filters) > 0 or is_custom_sorted
+
+        if has_active_filters:
+            ctk.CTkButton(
+                self.__account_actions_bar,
+                text="Réinitialiser les filtres",
+                width=150,
+                height=28,
+                fg_color="gray60",
+                hover_color="gray50",
+                font=("Arial", 12),
+                command=lambda: (
+                    self.__column_filters.clear(),
+                    setattr(self, "_sort_column", "date"),
+                    setattr(self, "_sort_ascending", False),
+                    self.__update_table_content(stock_portfolio_row, 1),
+                ),
+            ).pack(side="right", padx=5)
+
+        # Bouton de suppression groupée si des transactions sont sélectionnées
+        if self.__selected_transaction_ids:
+            ctk.CTkButton(
+                self.__account_actions_bar,
+                text=f"Supprimer la sélection ({len(self.__selected_transaction_ids)})",
+                fg_color=self.__theme["red"]["fg_color"],
+                hover_color=self.__theme["red"]["hover_color"],
+                command=lambda: self.__handle_delete_selected_transactions(stock_portfolio_row),
+            ).pack(side="right", padx=5)
+
+    def __update_table_content(self, stock_portfolio_row: pd.Series, page: int) -> None:
+        """Rafraîchit le tableau avec prise en compte des filtres par colonne."""
+
+        self.__build_actions_bar(stock_portfolio_row)
+
         for widget in self.__table_container_wrapper.winfo_children():
             widget.destroy()
 
@@ -123,14 +169,68 @@ class Transactions:
             df = self.__stock_db.get_transactions_by_stock_account(portfolio_id)
 
             if not df.empty:
+                # Application des filtres par colonne
+                df["date_dt"] = pd.to_datetime(df["date"], errors="coerce")
+                df["year_str"] = df["date_dt"].dt.year.astype(str)
+
+                for col_name, selected_vals in self.__column_filters.items():
+                    if col_name == "Date":
+                        if selected_vals:
+                            df = df[df["year_str"].isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+                    elif col_name == "Devise du compte":
+                        if selected_vals:
+                            df = df[df["account_currency"].astype(str).isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+                    elif col_name == "Opération":
+                        if selected_vals:
+                            df = df[df["type"].astype(str).isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+                    elif col_name == "Nom":
+                        if selected_vals:
+                            df = df[df["name"].astype(str).isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+                    elif col_name == "Ticker":
+                        if selected_vals:
+                            df = df[df["ticker"].astype(str).isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+                    elif col_name in ["Quantité", "Prix", "Montant", "Frais"]:
+                        col_key_map = {
+                            "Quantité": "shares",
+                            "Prix": "price",
+                            "Montant": "amount",
+                            "Frais": "fee",
+                        }
+                        target_col = col_key_map[col_name]
+                        if selected_vals:
+                            if isinstance(selected_vals, dict):
+                                op = selected_vals.get("operator")
+                                target = selected_vals.get("value")
+                                if op == "Supérieur ou égal (>=)":
+                                    df = df[df[target_col] >= target]
+                                elif op == "Inférieur ou égal (<=)":
+                                    df = df[df[target_col] <= target]
+                                elif op == "Égal (=)":
+                                    df = df[df[target_col] == target]
+                            elif isinstance(selected_vals, list):
+                                df = df[df[target_col].isin(selected_vals)]
+                        else:
+                            df = df.iloc[0:0]
+
                 df = df.sort_values(by="date", ascending=True)
                 df["id_view"] = range(1, len(df) + 1)
 
-                df = df.sort_values(
-                    by=[self.__sort_column, "id_view"],
-                    ascending=[self.__sort_ascending, False],
-                    key=lambda col: col.map(lambda x: remove_accents(str(x).lower()) if isinstance(x, str) else x),
-                )
+                if hasattr(self, "_sort_column") and self._sort_column:
+                    df = df.sort_values(
+                        by=[self._sort_column, "id_view"],
+                        ascending=[self._sort_ascending, False],
+                        key=lambda col: col.map(lambda x: remove_accents(str(x).lower()) if isinstance(x, str) else x),
+                    )
 
                 total_ops = len(df)
                 total_pages = max(1, (total_ops // items_per_page) + (1 if total_ops % items_per_page > 0 else 0))
@@ -144,9 +244,27 @@ class Transactions:
                 header_table.pack(fill="x", pady=(0, 5))
                 header_table.pack_propagate(False)
 
-                header_table.grid_columnconfigure(0, weight=0)
-                header_table.grid_columnconfigure((1, 2, 3, 4, 5, 6, 7, 8, 9), weight=1, uniform="group_trans")
-                header_table.grid_columnconfigure((10, 11), weight=0, minsize=85)
+                header_table.grid_columnconfigure(0, weight=0, minsize=40)
+                header_table.grid_columnconfigure(1, weight=0, minsize=50)
+                header_table.grid_columnconfigure((2, 3, 4, 5, 6, 7, 8, 9, 10), weight=1, uniform="group_trans")
+                header_table.grid_columnconfigure(11, weight=0, minsize=90)
+
+                page_ids = page_data["id"].tolist()
+                all_page_selected = (
+                    all(tr_id in self.__selected_transaction_ids for tr_id in page_ids) and len(page_ids) > 0
+                )
+
+                master_cb = ctk.CTkCheckBox(
+                    header_table,
+                    text="",
+                    width=20,
+                    checkbox_width=18,
+                    checkbox_height=18,
+                    command=lambda: self.__toggle_select_all_page(stock_portfolio_row, page, page_ids, master_cb),
+                )
+                master_cb.grid(row=0, column=0, padx=(10, 0), pady=5, sticky="w")
+                if all_page_selected:
+                    master_cb.select()
 
                 columns = [
                     "#",
@@ -159,50 +277,89 @@ class Transactions:
                     "Prix",
                     "Montant",
                     "Frais",
+                    "Justificatifs",
                 ]
 
-                col_map = {
-                    "#": "id_view",
-                    "Date": "date",
-                    "Devise du compte": "account_currency",
-                    "Opération": "type",
-                    "Nom": "name",
-                    "Ticker": "ticker",
-                    "Quantité": "shares",
-                    "Prix": "price",
-                    "Montant": "amount",
-                    "Frais": "fee",
-                }
+                num_cols = ["Quantité", "Prix", "Montant", "Frais"]
 
-                for i, col_name in enumerate(columns):
-                    padx_val = (25, 60) if i == 0 else 5
-                    anchor_val = "w" if i in [1, 3, 4] else "center"
+                for i, col_name in enumerate(columns, start=1):
+                    padx_val = (10, 20) if i == 1 else 5
 
-                    display_text = col_name
-                    if col_name in col_map and self.__sort_column == col_map[col_name]:
-                        display_text += " ▲" if self.__sort_ascending else " ▼"
+                    if col_name in num_cols or col_name == "Justificatifs":
+                        anchor_val = "center"
+                        cell_sticky = "nsew"
+                    elif i in [2, 3, 4, 5, 6]:
+                        anchor_val = "w"
+                        cell_sticky = "w"
+                    else:
+                        anchor_val = "center"
+                        cell_sticky = "w"
 
-                    lbl = ctk.CTkLabel(
-                        header_table,
-                        text=display_text,
-                        font=("Arial", 14, "bold"),
-                        text_color="black",
-                        anchor=anchor_val,
-                    )
-                    lbl.grid(
-                        row=0,
-                        column=i,
-                        padx=padx_val,
-                        pady=5,
-                        sticky="nsew",
-                    )
+                    cell_header_f = ctk.CTkFrame(header_table, fg_color="transparent")
+                    cell_header_f.grid(row=0, column=i, padx=padx_val, pady=5, sticky=cell_sticky)
 
-                    if col_name in col_map:
-                        lbl.configure(cursor="hand2")
-                        lbl.bind(
-                            "<Button-1>",
-                            lambda event, c=col_map[col_name]: self.__sort_handler(stock_portfolio_row, c),
+                    if col_name in num_cols or col_name == "Justificatifs":
+                        inner_center_f = ctk.CTkFrame(cell_header_f, fg_color="transparent")
+                        inner_center_f.pack(expand=True)
+
+                        lbl = ctk.CTkLabel(
+                            inner_center_f,
+                            text=col_name,
+                            font=("Arial", 14, "bold"),
+                            text_color="black",
+                            anchor="center",
                         )
+                        lbl.pack(side="left")
+
+                        if col_name in num_cols:
+                            filter_btn = ctk.CTkButton(
+                                inner_center_f,
+                                text="▼",
+                                width=18,
+                                height=18,
+                                font=("Arial", 9),
+                                fg_color="transparent",
+                                hover_color="gray70",
+                                text_color="black",
+                            )
+                            filter_btn.configure(
+                                command=lambda btn=filter_btn, c=col_name: self.__show_excel_filter_popup(
+                                    btn, c, stock_portfolio_row, page, is_numeric=True
+                                )
+                            )
+                            filter_btn.pack(side="left", padx=(4, 0))
+                    else:
+                        # Si c'est la colonne Ticker, on centre le contenu
+                        if col_name == "Ticker":
+                            cell_header_f.pack_configure(expand=True)
+                            anchor_val = "center"
+
+                        lbl = ctk.CTkLabel(
+                            cell_header_f,
+                            text=col_name,
+                            font=("Arial", 14, "bold"),
+                            text_color="black",
+                            anchor=anchor_val,
+                        )
+                        lbl.pack(side="left")
+
+                        if col_name not in ["#", "Justificatifs"]:
+                            filter_btn = ctk.CTkButton(
+                                cell_header_f,
+                                text="▼",
+                                width=18,
+                                height=18,
+                                font=("Arial", 9),
+                                fg_color="transparent",
+                                hover_color="gray70",
+                                text_color="black",
+                            )
+                            filter_btn.configure(
+                                command=lambda btn=filter_btn, c=col_name: self.__show_excel_filter_popup(
+                                    btn, c, stock_portfolio_row, page
+                                )
+                            )
+                            filter_btn.pack(side="left", padx=(4, 0))
 
                     if col_name == "#":
                         lbl.configure(width=50, anchor="center")
@@ -213,99 +370,158 @@ class Transactions:
                 rows_container.pack_propagate(False)
 
                 for i, (_, transaction) in enumerate(page_data.iterrows(), 1):
-                    row_bg = "gray95" if i % 2 == 0 else "gray90"
-                    row_f = ctk.CTkFrame(rows_container, fg_color=row_bg, height=30)
+                    tr_id = transaction["id"]
+                    is_selected = tr_id in self.__selected_transaction_ids
+
+                    default_bg = "gray95" if i % 2 == 0 else "gray90"
+                    hover_bg = "gray82"
+
+                    row_f = ctk.CTkFrame(rows_container, fg_color=default_bg, height=30, cursor="hand2")
                     row_f.pack(fill="x", pady=1)
 
-                    row_f.grid_columnconfigure(0, weight=0)
-                    row_f.grid_columnconfigure((1, 2, 3, 4, 5, 6, 7, 8, 9), weight=1, uniform="group_trans")
-                    row_f.grid_columnconfigure((10, 11), weight=0, minsize=85)
+                    row_f.grid_columnconfigure(0, weight=0, minsize=40)
+                    row_f.grid_columnconfigure(1, weight=0, minsize=50)
+                    row_f.grid_columnconfigure((2, 3, 4, 5, 6, 7, 8, 9, 10), weight=1, uniform="group_trans")
+                    row_f.grid_columnconfigure(11, weight=0, minsize=90)
 
-                    # Conversion de la devise en symbole
+                    cb_var = ctk.BooleanVar(value=is_selected)
+
+                    row_cb = ctk.CTkCheckBox(
+                        row_f,
+                        text="",
+                        width=20,
+                        checkbox_width=18,
+                        checkbox_height=18,
+                        variable=cb_var,
+                        fg_color=default_bg,
+                        border_color="black",
+                        checkmark_color="black",
+                        command=lambda tid=tr_id: self.__toggle_select_transaction(tid, stock_portfolio_row, page),
+                    )
+                    row_cb.grid(row=0, column=0, padx=(10, 0), sticky="w")
+                    if tr_id in self.__selected_transaction_ids:
+                        row_cb.select()
+
                     curr_symbol = currency_symbols.get(
                         str(transaction["account_currency"]).upper(), str(transaction["account_currency"])
                     )
 
-                    # 0. # (Numéro d'affichage)
-                    ctk.CTkLabel(
-                        row_f, text=str(transaction["id_view"]), font=("Arial", 11, "italic"), width=50, anchor="center"
-                    ).grid(row=0, column=0, padx=(25, 60), sticky="nsew")
-
-                    # 1. Date
-                    ctk.CTkLabel(row_f, text=str(transaction["date"]), anchor="w").grid(
-                        row=0, column=1, padx=5, sticky="nsew"
+                    lbl_id = ctk.CTkLabel(
+                        row_f,
+                        text=str(transaction["id_view"]),
+                        font=("Arial", 11, "italic"),
+                        width=50,
+                        anchor="center",
+                        fg_color=default_bg,
                     )
+                    lbl_id.grid(row=0, column=1, padx=(10, 20), sticky="nsew")
 
-                    # 2. Devise du compte
-                    ctk.CTkLabel(row_f, text=str(transaction["account_currency"]), anchor="center").grid(
-                        row=0, column=2, padx=5, sticky="nsew"
+                    lbl_date = ctk.CTkLabel(row_f, text=str(transaction["date"]), anchor="w", fg_color=default_bg)
+                    lbl_date.grid(row=0, column=2, padx=5, sticky="nsew")
+
+                    lbl_curr = ctk.CTkLabel(
+                        row_f, text=str(transaction["account_currency"]), anchor="center", fg_color=default_bg
                     )
+                    lbl_curr.grid(row=0, column=3, padx=5, sticky="nsew")
 
-                    # 3. Type
                     type_key = str(transaction["type"]).lower()
                     type_text = type_op.get(type_key, type_key.capitalize())
+                    lbl_type = ctk.CTkLabel(row_f, text=type_text, anchor="w", fg_color=default_bg)
+                    lbl_type.grid(row=0, column=4, padx=5, sticky="nsew")
 
-                    ctk.CTkLabel(row_f, text=type_text, anchor="w").grid(row=0, column=3, padx=5, sticky="nsew")
-
-                    # 4. Nom
                     name_val = str(transaction["name"]) if pd.notna(transaction["name"]) else "-"
-                    ctk.CTkLabel(row_f, text=name_val, anchor="w").grid(row=0, column=4, padx=5, sticky="nsew")
+                    lbl_name = ctk.CTkLabel(row_f, text=name_val, anchor="w", fg_color=default_bg)
+                    lbl_name.grid(row=0, column=5, padx=5, sticky="nsew")
 
-                    # 5. Ticker
                     ticker_val = str(transaction["ticker"]) if pd.notna(transaction["ticker"]) else "-"
-                    ctk.CTkLabel(row_f, text=ticker_val, anchor="center").grid(row=0, column=5, padx=5, sticky="nsew")
+                    lbl_ticker = ctk.CTkLabel(row_f, text=ticker_val, anchor="center", fg_color=default_bg)
+                    lbl_ticker.grid(row=0, column=6, padx=5, sticky="nsew")
 
-                    # 6. Quantité
                     qty_val = transaction["shares"]
                     qty_str = f"{qty_val:g}" if pd.notna(qty_val) else "-"
-                    ctk.CTkLabel(row_f, text=qty_str, anchor="center").grid(row=0, column=6, padx=5, sticky="nsew")
+                    lbl_qty = ctk.CTkLabel(row_f, text=qty_str, anchor="center", fg_color=default_bg)
+                    lbl_qty.grid(row=0, column=7, padx=5, sticky="nsew")
 
-                    # 7. Prix (price)
                     price_val = transaction["price"]
                     price_str = (
                         f"{price_val:,.2f}".replace(",", " ") + f" {curr_symbol}" if pd.notna(price_val) else "-"
                     )
-                    ctk.CTkLabel(row_f, text=price_str, anchor="center").grid(row=0, column=7, padx=5, sticky="nsew")
+                    lbl_price = ctk.CTkLabel(row_f, text=price_str, anchor="center", fg_color=default_bg)
+                    lbl_price.grid(row=0, column=8, padx=5, sticky="nsew")
 
-                    # 8. Montant
                     amt = transaction["amount"]
                     formatted_amt = f"{amt:,.2f}".replace(",", " ") + f" {curr_symbol}"
                     op_type = str(transaction["type"]).lower()
                     is_incoming = op_type in ["sell", "dividend", "interest", "deposit"]
                     color = self.__theme["green"]["fg_color"] if is_incoming else self.__theme["red"]["fg_color"]
 
-                    ctk.CTkLabel(
-                        row_f, text=formatted_amt, text_color=color, font=("Arial", 12, "bold"), anchor="center"
-                    ).grid(row=0, column=8, padx=5, sticky="nsew")
+                    lbl_amt = ctk.CTkLabel(
+                        row_f,
+                        text=formatted_amt,
+                        text_color=color,
+                        font=("Arial", 12, "bold"),
+                        anchor="center",
+                        fg_color=default_bg,
+                    )
+                    lbl_amt.grid(row=0, column=9, padx=5, sticky="nsew")
 
-                    # 9. Frais
                     fee_val = transaction["fee"]
                     fee_str = f"{fee_val:,.2f}".replace(",", " ") + f" {curr_symbol}" if fee_val > 0 else "-"
-                    ctk.CTkLabel(row_f, text=fee_str, anchor="center").grid(row=0, column=9, padx=5, sticky="nsew")
+                    lbl_fee = ctk.CTkLabel(row_f, text=fee_str, anchor="center", fg_color=default_bg)
+                    lbl_fee.grid(row=0, column=10, padx=5, sticky="nsew")
 
-                    # 10. Bouton Modifier
-                    ctk.CTkButton(
-                        row_f,
-                        text="Modifier",
-                        width=75,
-                        height=22,
-                        fg_color=self.__theme["blue_01"]["fg_color"],
-                        hover_color=self.__theme["blue_01"]["hover_color"],
-                        command=lambda o=transaction: self.__handle_edit_transaction(o, stock_portfolio_row),
-                    ).grid(row=0, column=10, padx=5, pady=5)
+                    attachments = self.__stock_db.get_transaction_attachments(tr_id)
+                    has_attachments = len(attachments) > 0
 
-                    # 11. Bouton Supprimer
-                    ctk.CTkButton(
+                    att_text = f"Fichier ({len(attachments)})" if has_attachments else "Fichier"
+                    att_color = self.__theme["blue_01"]["fg_color"] if has_attachments else "gray60"
+                    att_hover = self.__theme["blue_01"]["hover_color"] if has_attachments else "gray50"
+
+                    att_btn = ctk.CTkButton(
                         row_f,
-                        text="Supprimer",
-                        width=75,
-                        height=22,
-                        fg_color=self.__theme["red"]["fg_color"],
-                        hover_color=self.__theme["red"]["hover_color"],
-                        command=lambda o_id=transaction["id"]: self.__handle_delete_transaction(
-                            stock_portfolio_row, o_id
-                        ),
-                    ).grid(row=0, column=11, padx=5, pady=5)
+                        text=att_text,
+                        width=95,
+                        height=24,
+                        corner_radius=6,
+                        font=("Arial", 11, "bold"),
+                        fg_color=att_color,
+                        hover_color=att_hover,
+                        command=lambda o=transaction: self.__handle_attachments_modal(o, stock_portfolio_row, page),
+                    )
+                    att_btn.grid(row=0, column=11, padx=5, pady=4)
+
+                    widgets_in_row = [
+                        row_f,
+                        lbl_id,
+                        lbl_date,
+                        lbl_curr,
+                        lbl_type,
+                        lbl_name,
+                        lbl_ticker,
+                        lbl_qty,
+                        lbl_price,
+                        lbl_amt,
+                        lbl_fee,
+                    ]
+
+                    def on_enter(event, wf=widgets_in_row, cb=row_cb):
+                        for w in wf:
+                            w.configure(fg_color=hover_bg)
+                        cb.configure(fg_color=hover_bg)
+
+                    def on_leave(event, wf=widgets_in_row, cb=row_cb, bg=default_bg):
+                        for w in wf:
+                            w.configure(fg_color=bg)
+                        cb.configure(fg_color=bg)
+
+                    for w in widgets_in_row:
+                        w.bind("<Enter>", on_enter)
+                        w.bind("<Leave>", on_leave)
+                        if w != att_btn:
+                            w.bind(
+                                "<Button-1>",
+                                lambda event, o=transaction: self.__handle_edit_transaction(o, stock_portfolio_row),
+                            )
 
                 # Barre de Pagination
                 pagination_container = ctk.CTkFrame(self.__table_container_wrapper, fg_color="transparent")
@@ -370,16 +586,560 @@ class Transactions:
                 pady=20
             )
 
-    def __sort_handler(self, stock_portfolio_row: pd.Series, column_name: str) -> None:
-        """Tri une colonne en particulier dans l'ordre croissant"""
+    def __show_excel_filter_popup(self, button, col_name, stock_portfolio_row, page, is_numeric=False):
+        """Affiche une fenêtre pop-up de filtre dynamique (style Excel) adaptée aux transactions."""
 
-        if self.__sort_column == column_name:
-            self.__sort_ascending = not self.__sort_ascending
+        df_all = self.__stock_db.get_transactions_by_stock_account(stock_portfolio_row["id"])
+        if df_all.empty:
+            return
+
+        # Filtrage en cascade
+        df_filtered = df_all.copy()
+        df_filtered["date_dt"] = pd.to_datetime(df_filtered["date"], errors="coerce")
+        df_filtered["year_str"] = df_filtered["date_dt"].dt.year.astype(str)
+
+        col_db_map = {
+            "Quantité": "shares",
+            "Prix": "price",
+            "Montant": "amount",
+            "Frais": "fee",
+        }
+
+        for col_k, selected_vals in self.__column_filters.items():
+            if col_k == col_name:
+                continue
+
+            if col_k == "Date" and selected_vals:
+                df_filtered = df_filtered[df_filtered["year_str"].isin(selected_vals)]
+            elif col_k == "Devise du compte" and selected_vals:
+                df_filtered = df_filtered[df_filtered["account_currency"].astype(str).isin(selected_vals)]
+            elif col_k == "Opération" and selected_vals:
+                df_filtered = df_filtered[df_filtered["type"].astype(str).isin(selected_vals)]
+            elif col_k == "Nom" and selected_vals:
+                df_filtered = df_filtered[df_filtered["name"].astype(str).isin(selected_vals)]
+            elif col_k == "Ticker" and selected_vals:
+                df_filtered = df_filtered[df_filtered["ticker"].astype(str).isin(selected_vals)]
+            elif col_k in col_db_map and selected_vals:
+                target_col = col_db_map[col_k]
+                if isinstance(selected_vals, dict):
+                    op = selected_vals.get("operator")
+                    target = selected_vals.get("value")
+                    if op == "Supérieur ou égal (>=)":
+                        df_filtered = df_filtered[df_filtered[target_col] >= target]
+                    elif op == "Inférieur ou égal (<=)":
+                        df_filtered = df_filtered[df_filtered[target_col] <= target]
+                    elif op == "Égal (=)":
+                        df_filtered = df_filtered[df_filtered[target_col] == target]
+                elif isinstance(selected_vals, list):
+                    df_filtered = df_filtered[df_filtered[target_col].isin(selected_vals)]
+
+        popup_width = 280
+        popup_height = 250 if is_numeric else 410
+
+        x = button.winfo_rootx()
+        if is_numeric:
+            x = button.winfo_rootx() + button.winfo_width() - popup_width
+
+        y = button.winfo_rooty() + button.winfo_height()
+
+        popup = ctk.CTkToplevel(button.winfo_toplevel())
+        popup.wm_overrideredirect(True)
+        popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
+        popup.grab_set()
+
+        main_frame = ctk.CTkFrame(popup, fg_color="gray90", corner_radius=6)
+        main_frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Filtre spécifique numérique (Quantité, Prix, Montant, Frais)
+        if is_numeric:
+            sort_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+            sort_frame.pack(fill="x", padx=10, pady=(8, 4))
+
+            target_db_col = col_db_map[col_name]
+
+            ctk.CTkButton(
+                sort_frame,
+                text="Trier du plus petit au plus grand",
+                anchor="w",
+                fg_color="transparent",
+                text_color="black",
+                hover_color="gray80",
+                height=22,
+                font=("Arial", 11),
+                command=lambda: (
+                    popup.destroy(),
+                    setattr(self, "_sort_column", target_db_col),
+                    setattr(self, "_sort_ascending", True),
+                    self.__update_table_content(stock_portfolio_row, page),
+                ),
+            ).pack(fill="x")
+
+            ctk.CTkButton(
+                sort_frame,
+                text="Trier du plus grand au plus petit",
+                anchor="w",
+                fg_color="transparent",
+                text_color="black",
+                hover_color="gray80",
+                height=22,
+                font=("Arial", 11),
+                command=lambda: (
+                    popup.destroy(),
+                    setattr(self, "_sort_column", target_db_col),
+                    setattr(self, "_sort_ascending", False),
+                    self.__update_table_content(stock_portfolio_row, page),
+                ),
+            ).pack(fill="x")
+
+            ctk.CTkFrame(main_frame, height=1, fg_color="gray70").pack(fill="x", padx=10, pady=6)
+
+            current_num_filter = self.__column_filters.get(col_name, {})
+
+            op_var = ctk.StringVar(
+                value=current_num_filter.get("operator", "Supérieur ou égal (>=)")
+                if isinstance(current_num_filter, dict)
+                else "Supérieur ou égal (>=)"
+            )
+            op_dropdown = ctk.CTkOptionMenu(
+                main_frame,
+                values=["Supérieur ou égal (>=)", "Inférieur ou égal (<=)", "Égal (=)"],
+                variable=op_var,
+                height=28,
+            )
+            op_dropdown.pack(fill="x", padx=10, pady=(5, 5))
+
+            val_var = ctk.StringVar(
+                value=str(current_num_filter.get("value", "")) if isinstance(current_num_filter, dict) else ""
+            )
+            val_entry = ctk.CTkEntry(
+                main_frame,
+                textvariable=val_var,
+                placeholder_text="Valeur (ex: 50.00)",
+                height=28,
+            )
+            val_entry.pack(fill="x", padx=10, pady=(5, 10))
+
+            def apply_numeric_filter():
+                raw_val = val_var.get().replace(",", ".").strip()
+                if raw_val:
+                    try:
+                        target_val = float(raw_val)
+                        self.__column_filters[col_name] = {
+                            "operator": op_var.get(),
+                            "value": target_val,
+                        }
+                    except ValueError:
+                        messagebox.showerror("Erreur", "Veuillez saisir un nombre valide.")
+                        return
+                else:
+                    self.__column_filters.pop(col_name, None)
+
+                popup.destroy()
+                self.__update_table_content(stock_portfolio_row, page)
+
+            btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent", height=40)
+            btn_frame.pack(fill="x", padx=10, pady=10)
+
+            ctk.CTkButton(
+                btn_frame,
+                text="OK",
+                width=115,
+                height=28,
+                fg_color=self.__theme["blue_01"]["fg_color"],
+                command=apply_numeric_filter,
+            ).pack(side="left", padx=(0, 5))
+
+            ctk.CTkButton(
+                btn_frame,
+                text="Annuler",
+                width=115,
+                height=28,
+                fg_color="gray60",
+                hover_color="gray50",
+                command=popup.destroy,
+            ).pack(side="right", padx=(5, 0))
+
+            return
+
+        # Autres colonnes COLONNES (Date, Devise, Opération, Nom, Ticker)
+        if col_name == "Date":
+            unique_values = sorted([str(x) for x in df_filtered["year_str"].dropna().unique()])
+        elif col_name == "Devise du compte":
+            unique_values = sorted([str(x) for x in df_filtered["account_currency"].dropna().unique()])
+        elif col_name == "Opération":
+            unique_values = sorted([str(x) for x in df_filtered["type"].dropna().unique()])
+        elif col_name == "Nom":
+            unique_values = sorted([str(x) for x in df_filtered["name"].dropna().unique()])
+        elif col_name == "Ticker":
+            unique_values = sorted([str(x) for x in df_filtered["ticker"].dropna().unique()])
         else:
-            self.__sort_column = column_name
-            self.__sort_ascending = True
+            unique_values = []
 
-        self.__update_table_content(stock_portfolio_row, page=1)
+        if col_name == "Date":
+            sort_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+            sort_frame.pack(fill="x", padx=10, pady=(8, 4))
+
+            ctk.CTkButton(
+                sort_frame,
+                text="Trier de la plus ancienne à la plus récente",
+                anchor="w",
+                fg_color="transparent",
+                text_color="black",
+                hover_color="gray80",
+                height=22,
+                font=("Arial", 11),
+                command=lambda: (
+                    popup.destroy(),
+                    setattr(self, "_sort_column", "date"),
+                    setattr(self, "_sort_ascending", True),
+                    self.__update_table_content(stock_portfolio_row, page),
+                ),
+            ).pack(fill="x")
+            ctk.CTkButton(
+                sort_frame,
+                text="Trier de la plus récente à la plus ancienne",
+                anchor="w",
+                fg_color="transparent",
+                text_color="black",
+                hover_color="gray80",
+                height=22,
+                font=("Arial", 11),
+                command=lambda: (
+                    popup.destroy(),
+                    setattr(self, "_sort_column", "date"),
+                    setattr(self, "_sort_ascending", False),
+                    self.__update_table_content(stock_portfolio_row, page),
+                ),
+            ).pack(fill="x")
+
+            ctk.CTkFrame(main_frame, height=1, fg_color="gray70").pack(fill="x", padx=10, pady=4)
+
+        search_var = ctk.StringVar()
+        search_entry = ctk.CTkEntry(main_frame, textvariable=search_var, placeholder_text="Rechercher", height=28)
+        search_entry.pack(fill="x", padx=10, pady=(5, 5))
+
+        scroll_frame = ctk.CTkScrollableFrame(main_frame, fg_color="transparent", height=180)
+        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        saved_selected = self.__column_filters.get(col_name, None)
+        if saved_selected is not None:
+            current_selected = [val for val in saved_selected if val in unique_values]
+            if not current_selected:
+                current_selected = unique_values
+        else:
+            current_selected = unique_values
+
+        vars_dict = {}
+
+        select_all_var = ctk.BooleanVar(value=all(val in current_selected for val in unique_values))
+
+        def toggle_select_all():
+            state = select_all_var.get()
+            for v in vars_dict.values():
+                v.set(state)
+
+        select_all_cb = ctk.CTkCheckBox(
+            scroll_frame, text="(Sélectionner tout)", variable=select_all_var, command=toggle_select_all
+        )
+        select_all_cb.pack(anchor="w", padx=5, pady=2)
+
+        checkboxes = []
+        for val in unique_values:
+            v = ctk.BooleanVar(value=val in current_selected)
+            vars_dict[val] = v
+            display_text = str(val)
+            cb = ctk.CTkCheckBox(scroll_frame, text=display_text, variable=v)
+            cb.pack(anchor="w", padx=5, pady=2)
+            checkboxes.append((val, cb))
+
+        def filter_checkboxes(*args):
+            query = search_var.get().lower()
+            for val, cb in checkboxes:
+                display_str = str(val)
+                if query in display_str.lower():
+                    cb.pack(anchor="w", padx=5, pady=2)
+                else:
+                    cb.pack_forget()
+
+        search_var.trace("w", filter_checkboxes)
+
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent", height=40)
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        btn_frame.pack_propagate(False)
+
+        def apply_filter():
+            selected = [val for val, v in vars_dict.items() if v.get()]
+            if len(selected) == len(unique_values):
+                self.__column_filters.pop(col_name, None)
+            else:
+                self.__column_filters[col_name] = selected
+            popup.destroy()
+            self.__update_table_content(stock_portfolio_row, page)
+
+        ok_btn = ctk.CTkButton(
+            btn_frame,
+            text="OK",
+            width=115,
+            height=28,
+            fg_color=self.__theme["blue_01"]["fg_color"],
+            command=apply_filter,
+        )
+        ok_btn.pack(side="left", padx=(0, 5))
+
+        cancel_btn = ctk.CTkButton(
+            btn_frame,
+            text="Annuler",
+            width=115,
+            height=28,
+            fg_color="gray60",
+            hover_color="gray50",
+            command=popup.destroy,
+        )
+        cancel_btn.pack(side="right", padx=(5, 0))
+
+    def __toggle_select_transaction(self, transaction_id: int, stock_portfolio_row: pd.Series, page: int) -> None:
+        """Ajoute ou retire une transaction de la sélection multiple."""
+        if transaction_id in self.__selected_transaction_ids:
+            self.__selected_transaction_ids.remove(transaction_id)
+        else:
+            self.__selected_transaction_ids.add(transaction_id)
+        self.__build_actions_bar(stock_portfolio_row)
+
+    def __toggle_select_all_page(
+        self, stock_portfolio_row: pd.Series, page: int, page_ids: list, master_cb: ctk.CTkCheckBox
+    ) -> None:
+        """Sélectionne ou désélectionne toutes les transactions de la page courante."""
+        all_selected = all(tr_id in self.__selected_transaction_ids for tr_id in page_ids)
+        if all_selected:
+            for tr_id in page_ids:
+                self.__selected_transaction_ids.discard(tr_id)
+        else:
+            for tr_id in page_ids:
+                self.__selected_transaction_ids.add(tr_id)
+        self.__build_actions_bar(stock_portfolio_row)
+        self.__update_table_content(stock_portfolio_row, page)
+
+    def __handle_delete_selected_transactions(self, stock_portfolio_row: pd.Series) -> None:
+        """Gère la suppression groupée des transactions sélectionnées."""
+        if not self.__selected_transaction_ids:
+            return
+
+        if not messagebox.askyesno(
+            "Confirmation",
+            f"Souhaitez-vous vraiment supprimer les {len(self.__selected_transaction_ids)} transaction(s) sélectionnée(s) ?",
+        ):
+            return
+
+        loading_win = LoadingPopup(self.__master, "Suppression en cours...")
+
+        def task():
+            try:
+                for tr_id in list(self.__selected_transaction_ids):
+                    self.__stock_db.delete_transaction(tr_id)
+                self.__selected_transaction_ids.clear()
+                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
+            except Exception:
+                self.__master.after(0, lambda: messagebox.showerror("Erreur", "Erreur lors de la suppression groupée"))
+            finally:
+                self.__master.after(0, lambda: self.__on_process_complete(loading_win, stock_portfolio_row))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def __handle_attachments_modal(self, transaction: pd.Series, stock_portfolio_row: pd.Series, page: int) -> None:
+        """Ouvre une fenêtre modale pour gérer les pièces justificatives d'une transaction."""
+        currency_symbols = {"EUR": "€", "USD": "$"}
+        curr_symbol = currency_symbols.get(
+            str(transaction["account_currency"]).upper(), str(transaction["account_currency"])
+        )
+
+        att_win = ctk.CTkToplevel(self.__master)
+        att_win.title("Gestion des pièces justificatives")
+
+        width, height = 940, 530
+        att_win.geometry(f"{width}x{height}")
+        att_win.minsize(width, height)
+        center_window_on_screen(att_win, width, height, 2)
+
+        att_win.grab_set()
+
+        header_card = ctk.CTkFrame(att_win, fg_color="gray85", corner_radius=10)
+        header_card.pack(fill="x", padx=25, pady=20)
+
+        ctk.CTkLabel(header_card, text="Pièces justificatives de la transaction", font=("Arial", 16, "bold")).pack(
+            anchor="w", padx=15, pady=(12, 5)
+        )
+
+        amt = transaction["amount"]
+        formatted_amt = f"{amt:,.2f}".replace(",", " ") + f" {curr_symbol}"
+        op_type = str(transaction["type"]).lower()
+        is_incoming = op_type in ["sell", "dividend", "interest", "deposit"]
+        amt_color = self.__theme["green"]["fg_color"] if is_incoming else self.__theme["red"]["fg_color"]
+
+        # Ligne 1 : Date | Opération | Montant
+        info_row_1 = ctk.CTkFrame(header_card, fg_color="transparent")
+        info_row_1.pack(fill="x", padx=15, pady=(0, 6))
+
+        ctk.CTkLabel(info_row_1, text="Date :", font=("Arial", 13, "bold")).pack(side="left")
+        ctk.CTkLabel(info_row_1, text=f"{transaction['date']}", font=("Arial", 13)).pack(side="left", padx=(4, 15))
+
+        ctk.CTkLabel(info_row_1, text="Opération :", font=("Arial", 13, "bold")).pack(side="left")
+        ctk.CTkLabel(info_row_1, text=f"{transaction['type']}", font=("Arial", 13)).pack(side="left", padx=(4, 15))
+
+        ctk.CTkLabel(info_row_1, text="Montant :", font=("Arial", 13, "bold")).pack(side="left")
+        ctk.CTkLabel(info_row_1, text=f"{formatted_amt}", font=("Arial", 13, "bold"), text_color=amt_color).pack(
+            side="left", padx=(4, 0)
+        )
+
+        # Ligne 2 : Ticker | Nom (créée uniquement si le ticker est valide)
+        ticker_val = transaction["ticker"]
+        if pd.notna(ticker_val) and str(ticker_val).strip() != "":
+            info_row_2 = ctk.CTkFrame(header_card, fg_color="transparent")
+            info_row_2.pack(fill="x", padx=15, pady=(0, 6))
+
+            ctk.CTkLabel(info_row_2, text="Ticker :", font=("Arial", 13, "bold")).pack(side="left")
+            ctk.CTkLabel(info_row_2, text=f"{ticker_val}", font=("Arial", 13)).pack(side="left", padx=(4, 20))
+
+            ctk.CTkLabel(info_row_2, text="Nom :", font=("Arial", 13, "bold")).pack(side="left")
+            ctk.CTkLabel(info_row_2, text=f"{transaction['name']}", font=("Arial", 13)).pack(side="left", padx=(4, 0))
+
+        # Ligne 3 : Commentaire
+        raw_comment = transaction["comment"]
+        comment_display = "" if raw_comment is None or str(raw_comment).lower() == "nan" else str(raw_comment)
+
+        info_row_3 = ctk.CTkFrame(header_card, fg_color="transparent")
+        info_row_3.pack(fill="x", padx=15, pady=(0, 12))
+
+        ctk.CTkLabel(info_row_3, text="Commentaire :", font=("Arial", 13, "bold")).pack(side="left", anchor="n")
+
+        comment_textbox = ctk.CTkTextbox(info_row_3, height=55, wrap="word")
+        comment_textbox.insert("1.0", comment_display)
+        comment_textbox.configure(state="disabled")
+        comment_textbox.pack(side="left", fill="x", expand=True, padx=(4, 0))
+
+        list_frame = ctk.CTkScrollableFrame(att_win, width=580, height=220, fg_color="transparent")
+        list_frame.pack(fill="both", expand=True, padx=25, pady=(0, 15))
+
+        self.__refresh_attachment_list(transaction["id"], list_frame, stock_portfolio_row, page)
+
+        footer_frame = ctk.CTkFrame(att_win, fg_color="transparent")
+        footer_frame.pack(fill="x", padx=25, pady=(0, 20))
+
+        ctk.CTkButton(
+            footer_frame,
+            text="+ Ajouter un fichier",
+            height=35,
+            font=("Arial", 13, "bold"),
+            fg_color=self.__theme["green"]["fg_color"],
+            hover_color=self.__theme["green"]["hover_color"],
+            command=lambda: self.__add_attachment_file(transaction["id"], list_frame, stock_portfolio_row, page),
+        ).pack(fill="x")
+
+    def __refresh_attachment_list(
+        self, tr_id: int, list_frame: ctk.CTkScrollableFrame, stock_portfolio_row: pd.Series, page: int
+    ) -> None:
+        """Rafraîchit la liste des pièces justificatives dans la modale."""
+        for w in list_frame.winfo_children():
+            w.destroy()
+
+        attachments = self.__stock_db.get_transaction_attachments(tr_id)
+        if not attachments:
+            empty_lbl = ctk.CTkLabel(
+                list_frame,
+                text="Aucun document rattaché pour le moment.",
+                font=("Arial", 13, "italic"),
+                text_color="gray50",
+            )
+            empty_lbl.pack(pady=30)
+            return
+
+        for att in attachments:
+            row = ctk.CTkFrame(list_frame, fg_color="gray90", height=45, corner_radius=6)
+            row.pack(fill="x", pady=4)
+            row.pack_propagate(False)
+
+            full_name = att["file_name"]
+            max_len = 35
+            display_name = (full_name[:max_len] + "...") if len(full_name) > max_len else full_name
+
+            ctk.CTkLabel(row, text=display_name, anchor="w", font=("Arial", 13)).pack(side="left", padx=15)
+
+            ctk.CTkButton(
+                row,
+                text="Supprimer",
+                width=80,
+                height=26,
+                fg_color=self.__theme["red"]["fg_color"],
+                hover_color=self.__theme["red"]["hover_color"],
+                command=lambda aid=att["id"]: (
+                    self.__stock_db.delete_transaction_attachment(aid),
+                    self.__refresh_attachment_list(tr_id, list_frame, stock_portfolio_row, page),
+                    self.__update_table_content(stock_portfolio_row, page),
+                ),
+            ).pack(side="right", padx=8)
+
+            ctk.CTkButton(
+                row,
+                text="Télécharger",
+                width=95,
+                height=26,
+                fg_color=self.__theme["blue_01"]["fg_color"],
+                hover_color=self.__theme["blue_01"]["hover_color"],
+                command=lambda aid=att["id"]: self.__download_attachment(aid),
+            ).pack(side="right", padx=2)
+
+            ctk.CTkButton(
+                row,
+                text="Aperçu",
+                width=70,
+                height=26,
+                fg_color="gray50",
+                hover_color="gray40",
+                command=lambda aid=att["id"]: self.__preview_attachment(aid),
+            ).pack(side="right", padx=2)
+
+    def __add_attachment_file(
+        self, tr_id: int, list_frame: ctk.CTkScrollableFrame, stock_portfolio_row: pd.Series, page: int
+    ) -> None:
+        """Permet à l'utilisateur de sélectionner et d'ajouter un fichier justificatif."""
+        file_path = filedialog.askopenfilename(title="Sélectionner un fichier justificatif")
+        if file_path:
+            path_obj = Path(file_path)
+            with open(path_obj, "rb") as f:
+                file_bytes = f.read()
+            self.__stock_db.add_transaction_attachment(tr_id, file_bytes, path_obj.name, path_obj.suffix)
+            self.__refresh_attachment_list(tr_id, list_frame, stock_portfolio_row, page)
+            self.__update_table_content(stock_portfolio_row, page)
+
+    def __download_attachment(self, attachment_id: int) -> None:
+        """Télécharge et enregistre la pièce justificative sur le disque."""
+        data = self.__stock_db.get_transaction_attachment_data(attachment_id)
+        if not data:
+            messagebox.showerror("Erreur", "Fichier introuvable.")
+            return
+
+        save_path = filedialog.asksaveasfilename(initialfile=data["file_name"])
+        if save_path:
+            with open(save_path, "wb") as f:
+                f.write(data["file_data"])
+            messagebox.showinfo("Succès", "Fichier téléchargé avec succès.")
+
+    def __preview_attachment(self, attachment_id: int) -> None:
+        """Ouvre un aperçu temporaire de la pièce justificative."""
+        data = self.__stock_db.get_transaction_attachment_data(attachment_id)
+        if not data:
+            messagebox.showerror("Erreur", "Fichier introuvable.")
+            return
+
+        suffix = Path(data["file_name"]).suffix
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(data["file_data"])
+            tmp_path = tmp.name
+
+        try:
+            if os.name == "nt":
+                os.startfile(tmp_path)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'ouvrir l'aperçu : {e}")
 
     def __handle_add_transaction(self, stock_portfolio_row: pd.Series) -> None:
         """Ouvre la fenêtre pour ajouter une nouvelle transaction."""
@@ -403,23 +1163,6 @@ class Transactions:
             transaction=default_tr,
         )
         win.title("Ajouter une transaction")
-
-    def __handle_delete_transaction(self, stock_portfolio_row: pd.Series, transaction_id: int) -> None:
-        """Gère la suppression d'une transaction et rafraîchit l'affichage."""
-        loading_win = LoadingPopup(self.__master, "Suppression en cours...")
-
-        def task():
-            try:
-                self.__stock_db.delete_transaction(transaction_id)
-                self.update_bilan(stock_portfolio_row["id"], stock_portfolio_row["name"])
-            except Exception:
-                self.__master.after(
-                    0, lambda: messagebox.showerror("Erreur", "Erreur lors de la suppression d'une transaction")
-                )
-            finally:
-                self.__master.after(0, lambda: self.__on_process_complete(loading_win, stock_portfolio_row))
-
-        threading.Thread(target=task, daemon=True).start()
 
     def __handle_edit_transaction(self, transaction: pd.Series, stock_portfolio_row: pd.Series) -> None:
         """Ouvre la fenêtre de modification en récupérant au préalable les données complètes en BDD."""

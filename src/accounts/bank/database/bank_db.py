@@ -96,6 +96,7 @@ class BankDB(DatabaseBase):
                     amount = ?, 
                     short_label = ?, 
                     operation_type = ?, 
+                    comment = ?,
                     category_id = (SELECT id FROM categories WHERE name = ? AND bank_account_id = ?),
                     sub_category_id = (SELECT id FROM sub_categories WHERE name = ? 
                                        AND category_id = (SELECT id FROM categories WHERE name = ? AND bank_account_id = ?))
@@ -107,6 +108,7 @@ class BankDB(DatabaseBase):
                     updated_data["amount"],
                     updated_data["short_label"],
                     updated_data["operation_type"],
+                    updated_data["comment"],
                     updated_data["category"],
                     bank_account_id,
                     updated_data["sub_category"],
@@ -158,6 +160,7 @@ class BankDB(DatabaseBase):
                 COALESCE(c.name, 'Non catégorisé') AS category,
                 COALESCE(s.name, 'Non catégorisé') AS sub_category,
                 r.amount,
+                r.comment,
                 r.id AS id
             FROM raw_data r
             LEFT JOIN categories c ON r.category_id = c.id
@@ -167,7 +170,9 @@ class BankDB(DatabaseBase):
         """
 
         with self._get_connection() as conn:
-            return pd.read_sql_query(query, conn, params=(bank_account_id,))
+            df = pd.read_sql_query(query, conn, params=(bank_account_id,))
+            df["comment"] = df["comment"].fillna("")
+            return df
 
     def get_all_bank_accounts(self) -> pd.DataFrame:
         """Retourne la table bank_accounts triée par nombre d'opérations décroissant."""
@@ -536,6 +541,47 @@ class BankDB(DatabaseBase):
 
         return sub_category_id
 
+    def add_operation_attachment(
+        self, raw_data_id: int, file_bytes: bytes, file_name: str, file_type: str | None = None
+    ) -> None:
+        """Enregistre un fichier sous forme binaire (BLOB) lié à une opération bancaire."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO operation_attachments (raw_data_id, file_data, file_name, file_type) VALUES (?, ?, ?, ?)",
+                (raw_data_id, sqlite3.Binary(file_bytes), file_name, file_type),
+            )
+            conn.commit()
+
+    def get_operation_attachments(self, raw_data_id: int) -> list[dict]:
+        """Récupère la liste des métadonnées des pièces justificatives (sans charger les binaires lourds)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, file_name, file_type FROM operation_attachments WHERE raw_data_id = ?", (raw_data_id,)
+            )
+            rows = cursor.fetchall()
+            return [{"id": row[0], "file_name": row[1], "file_type": row[2]} for row in rows]
+
+    def get_operation_attachment_data(self, attachment_id: int) -> dict:
+        """Récupère le contenu binaire et les détails d'une pièce justificative pour aperçu ou téléchargement."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_data, file_name, file_type FROM operation_attachments WHERE id = ?", (attachment_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {"file_data": row[0], "file_name": row[1], "file_type": row[2]}
+            return None
+
+    def delete_operation_attachment(self, attachment_id: int) -> None:
+        """Supprime une pièce justificative."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM operation_attachments WHERE id = ?", (attachment_id,))
+            conn.commit()
+
     def _create_database(self) -> None:
         """Crée le schéma SQLite optimisé avec index et triggers automatiques"""
 
@@ -568,6 +614,16 @@ class BankDB(DatabaseBase):
                     UNIQUE(category_id, name)
                 );
 
+                CREATE TABLE IF NOT EXISTS operation_attachments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    raw_data_id INTEGER NOT NULL,
+                    file_data BLOB NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_type TEXT,
+                    
+                    FOREIGN KEY (raw_data_id) REFERENCES raw_data(id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS raw_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bank_account_id INTEGER NOT NULL,
@@ -578,6 +634,7 @@ class BankDB(DatabaseBase):
                     operation_type TEXT,
                     label TEXT NOT NULL,
                     amount REAL NOT NULL,
+                    comment TEXT,
                     
                     FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE CASCADE,
                     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,

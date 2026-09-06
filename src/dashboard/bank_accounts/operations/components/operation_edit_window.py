@@ -25,7 +25,7 @@ class OperationEditWindow(ctk.CTkToplevel):
         self.attributes("-topmost", False)
 
         self.geometry("450x600")
-        center_window_on_parent(self, parent, 450, 600)
+        center_window_on_parent(self, parent, 450, 610)
 
         self.__config = load_config()
         self.__theme = self.__config["theme"]
@@ -102,6 +102,17 @@ class OperationEditWindow(ctk.CTkToplevel):
             "sub_category",
             use_db=True,
         )
+
+        # Commentaire (Multi-lignes, hauteur d'environ 4 lignes avec scrollbar intégrée si dépassement)
+        ctk.CTkLabel(container, text="Commentaire", anchor="w").pack(fill="x", pady=(10, 0))
+        comment_textbox = ctk.CTkTextbox(container, height=85)
+
+        raw_comment = self.__op.get("comment", "")
+        comment_str = "" if raw_comment is None or str(raw_comment).lower() == "nan" else str(raw_comment)
+
+        comment_textbox.insert("1.0", comment_str)
+        comment_textbox.pack(fill="x", pady=5)
+        self.__entries["comment"] = comment_textbox
 
         self.__error_label = ctk.CTkLabel(self, text="", text_color=self.__theme["red"]["fg_color"], font=("Arial", 12))
         self.__error_label.pack(pady=(0, 5))
@@ -242,8 +253,13 @@ class OperationEditWindow(ctk.CTkToplevel):
     def __handle_save(self) -> None:
         """Récupère, valide et transmet les données de l'opération."""
 
-        # 1. Extraction des données brutes
-        data = {key: entry.get() for key, entry in self.__entries.items()}
+        # 1. Extraction des données brutes selon le type de widget
+        data = {}
+        for key, widget in self.__entries.items():
+            if isinstance(widget, ctk.CTkTextbox):
+                data[key] = widget.get("1.0", "end-1c")
+            else:
+                data[key] = widget.get()
 
         # On récupère la date via notre widget personnalisé
         raw_date = self.__date_picker.get()

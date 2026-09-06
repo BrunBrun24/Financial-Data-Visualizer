@@ -30,6 +30,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
         on_save_callback: callable,
         transaction: dict | None = None,
     ) -> None:
+        """Initialise la fenêtre de modification/création de transaction."""
         super().__init__(parent)
 
         self.__db = db
@@ -74,7 +75,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __validate_numeric_input(self, proposed_value: str) -> bool:
         """Valide la saisie numérique dans les champs texte."""
-
         if proposed_value == "":
             return True
         normalized = proposed_value.replace(",", ".")
@@ -88,7 +88,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __setup_ui(self) -> None:
         """Construit l'interface graphique de base avec tous les composants pré-instanciés."""
-
         title_text = "Modifier la transaction" if self.__is_edit_mode else "Nouvelle transaction"
         ctk.CTkLabel(self, text=title_text, font=("Arial", 18, "bold")).pack(pady=15)
 
@@ -106,12 +105,14 @@ class TransactionEditWindow(ctk.CTkToplevel):
         )
         self.__operation_selector.pack(fill="x", pady=(0, 10))
 
-        # Zone Titre
+        # Zone Titre (Masquée par défaut, gérée dynamiquement dans __render_dynamic_fields)
         self.__stock_container_frame = ctk.CTkFrame(container, fg_color="transparent")
-        self.__stock_container_frame.pack(fill="x", pady=(0, 10))
 
         self.__stock_label = ctk.CTkLabel(self.__stock_container_frame, text="Titre *", anchor="w")
+        self.__stock_label.pack(fill="x")
+
         self.__stock_frame = ctk.CTkFrame(self.__stock_container_frame, fg_color="transparent")
+        self.__stock_frame.pack(fill="x")
 
         self.__stock_selector = ctk.CTkOptionMenu(self.__stock_frame, values=[], command=self.__on_stock_changed)
         self.__stock_selector.pack(side="left", fill="x", expand=True, padx=(0, 5))
@@ -209,7 +210,12 @@ class TransactionEditWindow(ctk.CTkToplevel):
         self.__entry_fee_port.configure(validate="key", validatecommand=(self._validate_numeric_cmd, "%P"))
         self.__entry_fee_port.pack(fill="x")
 
-        self._refresh_stocks_list()
+        # Champ Commentaire
+        ctk.CTkLabel(container, text="Commentaire", anchor="w").pack(fill="x", pady=(5, 0))
+        self.__comment_textbox = ctk.CTkTextbox(container, height=70)
+        self.__comment_textbox.pack(fill="x", pady=(0, 10))
+
+        self.__refresh_stocks_list()
         self.__render_dynamic_fields()
 
         # Label pour l'affichage des erreurs en rouge
@@ -227,7 +233,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __on_operation_changed(self, choice: str) -> None:
         """Gère le changement de type d'opération."""
-        self._refresh_stocks_list()
+        self.__refresh_stocks_list()
         self.__render_dynamic_fields()
 
     def __on_date_changed(self, new_date: str) -> None:
@@ -250,7 +256,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __render_dynamic_fields(self) -> None:
         """Affiche ou masque les conteneurs pré-existants en fonction du contexte."""
-
         self.__f_rate.grid_remove()
         self.__row_orig.pack_forget()
         self.__row_port.pack_forget()
@@ -263,12 +268,11 @@ class TransactionEditWindow(ctk.CTkToplevel):
         op_display = self.__operation_var.get()
         type_op = self.OPERATIONS_MAP.get(op_display, "buy")
 
+        # Affichage ou masquage propre de la section Titre
         if type_op in ["buy", "sell", "dividend"]:
-            self.__stock_label.pack(fill="x")
-            self.__stock_frame.pack(fill="x")
+            self.__stock_container_frame.pack(fill="x", pady=(0, 10), before=self.__row_date_rate)
         else:
-            self.__stock_label.pack_forget()
-            self.__stock_frame.pack_forget()
+            self.__stock_container_frame.pack_forget()
 
         if type_op in ["buy", "sell", "dividend"]:
             selected_ticker = self.__tr.get("ticker") if self.__is_edit_mode else self.__get_selected_ticker()
@@ -314,7 +318,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __populate_fields(self) -> None:
         """Rempli les champs lors d'une modification."""
-
         self.__is_recalculating = True
         try:
             type_op = self.__tr.get("type", "buy")
@@ -331,6 +334,11 @@ class TransactionEditWindow(ctk.CTkToplevel):
             tr_date = self.__tr.get("date")
             if tr_date and pd.notna(tr_date):
                 self.__date_picker.set(str(tr_date))
+
+            raw_comment = self.__tr.get("comment", "")
+            comment_str = "" if raw_comment is None or str(raw_comment).lower() == "nan" else str(raw_comment)
+            self.__comment_textbox.delete("1.0", "end")
+            self.__comment_textbox.insert("1.0", comment_str)
 
             rate = float(self.__tr.get("fx_rate", 1.0) or 1.0)
             original_amount = float(self.__tr.get("original_amount", 0.0) or 0.0)
@@ -355,9 +363,8 @@ class TransactionEditWindow(ctk.CTkToplevel):
         finally:
             self.__is_recalculating = False
 
-    def _refresh_stocks_list(self) -> None:
+    def __refresh_stocks_list(self) -> None:
         """Actualise la liste des titres disponibles dans le menu déroulant."""
-
         ticker_id_map = self.__db.get_portfolio_ticker_ids(self.__portfolio_id)
         portfolio_tickers = list(ticker_id_map.keys())
 
@@ -404,7 +411,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __on_stock_changed(self, choice: str) -> None:
         """Gère la sélection ou l'ajout d'un nouveau titre."""
-
         self.__stock_selector.set(choice)
 
         if choice == "+ Ajouter un titre":
@@ -419,8 +425,7 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def _on_stock_added_callback(self, new_ticker: str) -> None:
         """Callback suite à l'ajout réussi d'un nouveau titre."""
-
-        self._refresh_stocks_list()
+        self.__refresh_stocks_list()
         display_label = self.__ticker_to_display_map.get(new_ticker, new_ticker)
         self.__stock_selector.set(display_label)
         self.__update_exchange_rate()
@@ -429,7 +434,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __update_exchange_rate(self) -> None:
         """Recalcule le taux de change pour l'action sélectionnée."""
-
         if self.__is_edit_mode and (self.__tr["type"] not in ["buy", "sell", "dividend"]):
             return
 
@@ -467,7 +471,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __update_stock_price(self) -> None:
         """Récupère automatiquement le prix unitaire de l'action à la date sélectionnée."""
-
         selected_ticker = self.__get_selected_ticker()
         type_op = self.OPERATIONS_MAP.get(self.__operation_var.get(), "buy")
 
@@ -500,7 +503,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __recalculate_from_orig(self) -> None:
         """Mise à jour automatique des devises depuis la monnaie de transaction."""
-
         if self.__is_recalculating:
             return
 
@@ -539,7 +541,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __recalculate_from_port(self) -> None:
         """Mise à jour automatique des devises depuis la monnaie du portefeuille."""
-
         if self.__is_recalculating:
             return
 
@@ -578,7 +579,6 @@ class TransactionEditWindow(ctk.CTkToplevel):
 
     def __handle_save(self) -> None:
         """Valide et enregistre la transaction en base de données."""
-
         # Réinitialisation du message d'erreur à chaque tentative
         self.__error_label.configure(text="")
 
@@ -662,11 +662,13 @@ class TransactionEditWindow(ctk.CTkToplevel):
                 raw_port_fee = self.__fee_port_var.get().replace(",", ".").strip()
                 fee_converted = round(float(raw_port_fee), 2) if raw_port_fee else 0.0
 
+            comment_value = self.__comment_textbox.get("1.0", "end-1c").strip()
             data = {
                 "portfolio_id": self.__portfolio_id,
                 "portfolio_ticker_id": portfolio_ticker_id,
                 "type": type_op,
                 "date": valid_date,
+                "comment": comment_value if comment_value else None,
                 "original_amount": original_amount,
                 "original_price": price_orig,
                 "original_fee": original_fee,
